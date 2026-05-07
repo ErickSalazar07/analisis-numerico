@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}TaxiDemand — Inicio{% endblock %}
+
+{% block content %}
+
+<!-- ══ HERO ════════════════════════════════════════════════════ -->
+<section class="hero">
+
+  <p class="hero-tag fade-up">Sistema de predicción urbana</p>
+
+  <h1 class="hero-title fade-up">
+    Demanda<br>de <span>Taxis</span><br>en Tiempo Real
+  </h1>
+
+  <p class="hero-subtitle fade-up">
+    Interpolación de Splines Cúbicos sobre 1&nbsp;440 minutos del día.
+    Visualiza la demanda, el tiempo de espera y el comportamiento
+    de la flota con precisión matemática.
+  </p>
+
+  <!-- Stats rápidos del servidor -->
+  <div class="hero-stats fade-up">
+    <div class="hero-stat">
+      <span class="value">{{ resumen.max_demanda.valor|int }}</span>
+      <span class="label">rpm pico · {{ resumen.max_demanda.hora_str }}</span>
+    </div>
+    <div class="hero-stat">
+      <span class="value">{{ resumen.num_taxis }}</span>
+      <span class="label">taxis activos</span>
+    </div>
+    <div class="hero-stat">
+      <span class="value">{{ "%.2f"|format(resumen.max_t_espera.valor) }}</span>
+      <span class="label">min espera máx.</span>
+    </div>
+  </div>
+
+  <div class="hero-actions fade-up">
+    <a href="{{ url_for('login') }}" class="btn btn-primary">
+      ▶ &nbsp;Ver dashboard
+    </a>
+    <a href="#features" class="btn btn-outline">Conocer más</a>
+  </div>
+
+</section>
+
+<!-- ══ FEATURES ════════════════════════════════════════════════ -->
+<section class="features" id="features">
+
+  <div class="feature-card">
+    <span class="feature-icon">∿</span>
+    <h3 class="feature-title">Spline Cúbico</h3>
+    <p class="feature-desc">
+      Interpolación <code>CubicSpline</code> de SciPy sobre 11 puntos
+      de control. Genera 1&nbsp;440 valores continuos — uno por minuto —
+      con suavidad C² garantizada.
+    </p>
+  </div>
+
+  <div class="feature-card">
+    <span class="feature-icon">⏱</span>
+    <h3 class="feature-title">Tiempo de Espera</h3>
+    <p class="feature-desc">
+      Cálculo en tiempo real de
+      <em>T<sub>espera</sub> = demanda / N<sub>taxis</sub></em>
+      para cada minuto. Identifica los momentos de mayor presión
+      sobre la flota.
+    </p>
+  </div>
+
+  <div class="feature-card">
+    <span class="feature-icon">◈</span>
+    <h3 class="feature-title">Visualización</h3>
+    <p class="feature-desc">
+      Gráficos interactivos con Chart.js: datos originales, curva
+      interpolada, animación del trazado y consultor de minuto
+      individual.
+    </p>
+  </div>
+
+  <div class="feature-card">
+    <span class="feature-icon">⬡</span>
+    <h3 class="feature-title">API JSON</h3>
+    <p class="feature-desc">
+      Endpoints <code>/api/spline</code> y <code>/api/consulta</code>
+      listos para integrarse con cualquier cliente externo o
+      sistema de despacho.
+    </p>
+  </div>
+
+</section>
+
+{% endblock %}

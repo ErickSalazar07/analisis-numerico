@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}TaxiDemand{% endblock %}</title>
+
+  <!-- CSS global -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+
+  <!-- Chart.js (para gráficos interactivos en dashboard) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+  <!-- ── Navbar ─────────────────────────────────────────── -->
+  <nav class="navbar">
+    <a class="nav-brand" href="{{ url_for('landing') }}">
+      <span class="dot"></span>
+      Taxi<span style="color:var(--amber)">Demand</span>
+    </a>
+
+    <ul class="nav-links">
+      <li><a href="{{ url_for('landing') }}"
+             class="{{ 'active' if request.endpoint == 'landing' }}">Inicio</a></li>
+      {% if session.get('logged_in') %}
+      <li><a href="{{ url_for('dashboard') }}"
+             class="{{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a></li>
+      <li><a href="{{ url_for('logout') }}">Salir</a></li>
+      {% else %}
+      <li><a href="{{ url_for('login') }}"
+             class="{{ 'active' if request.endpoint == 'login' }}">Acceso</a></li>
+      {% endif %}
+    </ul>
+  </nav>
+
+  <!-- ── Contenido de cada página ───────────────────────── -->
+  <div class="page">
+    {% block content %}{% endblock %}
+  </div>
+
+  <!-- ── Footer ─────────────────────────────────────────── -->
+  <footer>
+    <span>TaxiDemand &copy; {{ 2025 }} — Análisis Numérico</span>
+    <span>Splines Cúbicos · CubicSpline · Flask</span>
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,3 @@
+flask
+scipy
+numpy
