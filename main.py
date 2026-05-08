@@ -22,6 +22,7 @@ from spline import (
     get_resumen,
     get_demanda_en_minuto,
     get_comparativa_modelos,
+    get_arima_forecast,
     set_datos_raw,
 )
 
@@ -231,6 +232,21 @@ def api_consulta():
         minuto = int(request.args.get("minuto", 0))
         return jsonify(get_demanda_en_minuto(minuto))
     except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/arima")
+@login_required
+def api_arima():
+    """
+    Predicción ARIMA(2,1,1) + Spline para los próximos 30 minutos.
+    Query param: ?minuto=<int>  (120 – 1440)
+    """
+    try:
+        minuto = int(request.args.get("minuto", 720))
+        minuto = max(120, min(1440, minuto))
+        return jsonify(get_arima_forecast(minuto))
+    except Exception as e:
         return jsonify({"error": str(e)}), 400
 
 

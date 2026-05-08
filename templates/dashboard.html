@@ -157,6 +157,71 @@
     </div>
   </div>
 
+  <!-- ── ARIMA: Predicción Adaptativa 30 min ─────────────────── -->
+  <div class="arima-panel fade-up">
+
+    <div class="arima-head">
+      <div>
+        <h2 class="chart-title" style="margin-bottom:0.3rem;">
+          ARIMA — Predicción Adaptativa
+          <span class="badge">Spline + ARIMA(2,1,1)</span>
+        </h2>
+        <p class="arima-subhead">
+          Horizonte de 30 minutos · Umbral de alerta: 150 solicitudes/min
+        </p>
+      </div>
+      <div class="arima-controls">
+        <label class="form-label" for="arimaMinuto">Minuto actual (120–1440)</label>
+        <div class="arima-ctrl-row">
+          <input class="form-input" type="number" id="arimaMinuto"
+                 min="120" max="1440" value="680" placeholder="680" />
+          <button class="btn btn-primary" onclick="runArimaForecast()">Predecir →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Parámetros ajustados del modelo -->
+    <div class="arima-params" id="arimaParams" style="display:none;">
+      <span class="arima-param-item">
+        <span class="arima-param-key">Orden</span>
+        <span class="arima-param-val" id="apOrden">—</span>
+      </span>
+      <span class="arima-param-item">
+        <span class="arima-param-key">φ₁ (AR lag-1)</span>
+        <span class="arima-param-val" id="apPhi1">—</span>
+      </span>
+      <span class="arima-param-item">
+        <span class="arima-param-key">φ₂ (AR lag-2)</span>
+        <span class="arima-param-val" id="apPhi2">—</span>
+      </span>
+      <span class="arima-param-item">
+        <span class="arima-param-key">θ (MA lag-1)</span>
+        <span class="arima-param-val" id="apTheta">—</span>
+      </span>
+      <span class="arima-param-item">
+        <span class="arima-param-key">Hora base</span>
+        <span class="arima-param-val" id="apHora">—</span>
+      </span>
+    </div>
+
+    <!-- Gráfico combinado historia + forecast -->
+    <div class="chart-container" style="height:340px; margin-top:1rem;">
+      <canvas id="chartArima"></canvas>
+    </div>
+
+    <!-- Panel de alertas -->
+    <div class="arima-alerts" id="arimaAlerts" style="display:none;">
+      <p class="arima-alerts-title">⚠ Alertas detectadas en el horizonte de predicción</p>
+      <div class="arima-alerts-grid" id="arimaAlertsGrid"></div>
+    </div>
+
+    <!-- Sin alertas -->
+    <div class="arima-ok" id="arimaOk" style="display:none;">
+      ✓ Demanda proyectada dentro del umbral (≤ 150 solicitudes/min)
+    </div>
+
+  </div>
+
   <!-- ── Carga de datos CSV ───────────────────────────────────── -->
   <div class="upload-panel fade-up">
     <div class="upload-panel-head">
@@ -472,6 +537,188 @@ function baseScales(xLabel, yLabel) {
       scales: baseScales('Hora del día (cada 10 min)', 'Solicitudes / minuto'),
     }
   });
+})();
+
+/* ══════════════════════════════════════════════════════════════
+   ARIMA — Predicción Adaptativa (Spline + ARIMA(2,1,1))
+   ══════════════════════════════════════════════════════════════ */
+let _chartArima = null;
+
+async function runArimaForecast() {
+  const minuto = parseInt(document.getElementById('arimaMinuto').value);
+  if (isNaN(minuto) || minuto < 120 || minuto > 1440) {
+    alert('Ingresa un minuto entre 120 y 1440.');
+    return;
+  }
+
+  let data;
+  try {
+    const res = await fetch(`/api/arima?minuto=${minuto}`);
+    data = await res.json();
+    if (data.error) { alert(data.error); return; }
+  } catch (e) {
+    console.error(e);
+    alert('Error al obtener la predicción ARIMA.');
+    return;
+  }
+
+  /* ── Parámetros ─────────────────────────────────────── */
+  document.getElementById('apOrden').textContent = data.parametros.orden;
+  document.getElementById('apPhi1').textContent  = data.parametros.phi1.toFixed(4);
+  document.getElementById('apPhi2').textContent  = data.parametros.phi2.toFixed(4);
+  document.getElementById('apTheta').textContent = data.parametros.theta.toFixed(4);
+  document.getElementById('apHora').textContent  = data.hora_actual;
+  document.getElementById('arimaParams').style.display = 'flex';
+
+  /* ── Preparar datasets ──────────────────────────────── */
+  const hist    = data.historia;
+  const fc      = data.forecast;
+  const nH      = hist.length;
+
+  // Eje X unificado: historia + forecast
+  const allLabels = [
+    ...hist.map(p => p.hora_str),
+    ...fc.map(p => p.hora_str),
+  ];
+  const nAll = allLabels.length;
+
+  // Historia (solo los nH puntos, el resto null)
+  const histDem = [...hist.map(p => p.demanda), ...Array(fc.length).fill(null)];
+
+  // Conectar historia con forecast en el punto de unión
+  const lastHistDem = hist[nH - 1]?.demanda ?? null;
+  const fcArimaPad  = [...Array(nH - 1).fill(null), lastHistDem, ...fc.map(p => p.demanda)];
+  const fcSplinePad = [...Array(nH - 1).fill(null), lastHistDem, ...fc.map(p => p.spline)];
+
+  // Umbral horizontal en 150 para todo el eje
+  const umbral = Array(nAll).fill(data.umbral_alerta);
+
+  // Puntos de alerta (triángulos rojos)
+  const alertDots = fc.map(p => p.alerta ? p.demanda : null);
+  const alertPad  = [...Array(nH - 1).fill(null), lastHistDem, ...alertDots];
+
+  /* ── Dibujar Chart.js ───────────────────────────────── */
+  if (_chartArima) { _chartArima.destroy(); }
+
+  _chartArima = new Chart(document.getElementById('chartArima'), {
+    type: 'line',
+    data: {
+      labels: allLabels,
+      datasets: [
+        {
+          label: 'Historia (spline + ruido)',
+          data: histDem,
+          borderColor: C_BLUE,
+          backgroundColor: 'rgba(59,130,246,0.07)',
+          pointRadius: 0,
+          borderWidth: 2,
+          tension: 0.3,
+          fill: false,
+        },
+        {
+          label: 'Spline proyectado',
+          data: fcSplinePad,
+          borderColor: C_AMBER,
+          backgroundColor: 'transparent',
+          pointRadius: 0,
+          borderWidth: 1.5,
+          borderDash: [6, 3],
+          tension: 0.4,
+          fill: false,
+        },
+        {
+          label: 'ARIMA forecast',
+          data: fcArimaPad,
+          borderColor: C_GREEN,
+          backgroundColor: 'rgba(34,197,94,0.09)',
+          pointRadius: 0,
+          borderWidth: 2.5,
+          tension: 0.3,
+          fill: false,
+        },
+        {
+          label: 'Umbral 150 sol/min',
+          data: umbral,
+          borderColor: 'rgba(239,68,68,0.65)',
+          backgroundColor: 'transparent',
+          pointRadius: 0,
+          borderWidth: 1.5,
+          borderDash: [4, 4],
+          tension: 0,
+          fill: false,
+        },
+        {
+          label: '⚠ Alerta >150',
+          data: alertPad,
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(239,68,68,0.85)',
+          pointRadius: 7,
+          pointHoverRadius: 10,
+          pointStyle: 'triangle',
+          showLine: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 800, easing: 'easeOutCubic' },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { font: { size: 10 }, boxWidth: 14, padding: 12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.parsed.y != null
+              ? ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} sol/min`
+              : null,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { maxTicksLimit: 14, font: { size: 9 } },
+          grid:  { color: '#1e2a38' },
+        },
+        y: {
+          min: 0,
+          ticks: { font: { size: 10 } },
+          title: { display: true, text: 'Solicitudes / minuto', font: { size: 11 } },
+          grid:  { color: '#1e2a38' },
+        },
+      },
+    },
+  });
+
+  /* ── Alertas cards ──────────────────────────────────── */
+  const alertasEl = document.getElementById('arimaAlerts');
+  const okEl      = document.getElementById('arimaOk');
+  const gridEl    = document.getElementById('arimaAlertsGrid');
+
+  if (data.alertas.length > 0) {
+    gridEl.innerHTML = data.alertas.map(a => `
+      <div class="arima-alert-card ${a.nivel}">
+        <span class="aac-hora">${a.hora_str}</span>
+        <span class="aac-dem">${a.demanda_pred.toFixed(1)}</span>
+        <span class="aac-label">
+          sol/min &nbsp;·&nbsp; ${a.nivel === 'critica' ? '● CRÍTICA' : '● ALTA'}
+        </span>
+      </div>
+    `).join('');
+    alertasEl.style.display = 'block';
+    okEl.style.display      = 'none';
+  } else {
+    alertasEl.style.display = 'none';
+    okEl.style.display      = 'block';
+  }
+}
+
+/* Disparar automáticamente usando la hora actual del navegador */
+(function() {
+  const ahora    = new Date();
+  const minHoy   = ahora.getHours() * 60 + ahora.getMinutes();
+  const minDemo  = Math.max(120, Math.min(1440, minHoy > 120 ? minHoy : 680));
+  document.getElementById('arimaMinuto').value = minDemo;
+  runArimaForecast();
 })();
 
 /* ══════════════════════════════════════════════════════════════

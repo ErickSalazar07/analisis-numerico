@@ -270,6 +270,158 @@ def get_demanda_en_minuto(minuto: int) -> dict:
     }
 
 
+# ── Umbral de alerta para el modelo ARIMA ────────────────────────────────
+ALERTA_UMBRAL = 150.0   # solicitudes/minuto
+
+
+def get_arima_forecast(minuto_actual: int,
+                       horizonte: int = 30,
+                       ventana_hist: int = 120) -> dict:
+    """
+    Predicción híbrida Spline + ARIMA(2,1,1) para los próximos `horizonte` minutos.
+
+    Combina:
+      - Spline cúbico   → captura la tendencia macro del día
+      - AR(2) + d=1     → modela la autocorrelación del ruido en primeras diferencias
+      - MA(1)           → corrige el error del paso anterior
+
+    El ajuste se hace sobre residuos sintéticos (spline + ruido gaussiano reproducible)
+    que simulan datos históricos reales con variabilidad estocástica.
+    Genera alertas cuando la demanda pronosticada supera ALERTA_UMBRAL.
+
+    Returns:
+        {
+          "minuto_actual": int,
+          "hora_actual":   str,
+          "horizonte":     int,
+          "umbral_alerta": float,
+          "parametros":    {"phi1": float, "phi2": float, "theta": float, "orden": str},
+          "forecast":      [{"minuto": int, "hora_str": str, "demanda": float,
+                             "spline": float, "alerta": bool}, ...],
+          "alertas":       [{"minuto": int, "hora_str": str, "demanda_pred": float,
+                             "nivel": "alta"|"critica"}, ...],
+          "historia":      [{"minuto": int, "hora_str": str, "demanda": float,
+                             "spline": float}, ...],
+        }
+    """
+    minuto_actual = int(np.clip(minuto_actual, ventana_hist, 1440))
+    inicio = max(0, minuto_actual - ventana_hist)
+
+    hist_x      = np.arange(inicio, minuto_actual, dtype=float)
+    spline_hist = np.clip(_cs(hist_x), 0.0, None)
+
+    # Datos históricos simulados = spline + ruido gaussiano (σ ≈ 4 % + offset 0.5)
+    # Seed determinista por minuto → reproducible, pero varía con la hora elegida
+    rng   = np.random.default_rng(seed=minuto_actual)
+    ruido = rng.normal(0.0, np.maximum(spline_hist * 0.04, 0.5))
+    hist_y = np.clip(spline_hist + ruido, 0.0, None)
+
+    # Residuos respecto al spline (la tendencia ya está capturada)
+    residuos = hist_y - spline_hist
+
+    # Primera diferencia de residuos (d = 1)
+    d_res = np.diff(residuos)
+    n     = len(d_res)
+
+    # ── AR(2) por OLS ──────────────────────────────────────────────────────
+    phi1, phi2 = 0.0, 0.0
+    if n >= 4:
+        # Matriz de diseño: [d_{t-1}, d_{t-2}]
+        X_ar = np.column_stack([d_res[1:-1], d_res[:-2]])
+        y_ar = d_res[2:]
+        XtX  = X_ar.T @ X_ar + np.eye(2) * 1e-6   # regularización de Tikhonov
+        Xty  = X_ar.T @ y_ar
+        try:
+            coeffs = np.linalg.solve(XtX, Xty)
+            phi1, phi2 = float(coeffs[0]), float(coeffs[1])
+            # Restringir radio espectral para garantizar estacionariedad
+            norm = np.sqrt(phi1 ** 2 + phi2 ** 2)
+            if norm > 0.97:
+                phi1, phi2 = phi1 / norm * 0.97, phi2 / norm * 0.97
+        except np.linalg.LinAlgError:
+            phi1, phi2 = 0.0, 0.0
+
+    # ── MA(1) por OLS sobre los residuos del AR ────────────────────────────
+    theta    = 0.0
+    last_eps = 0.0
+    if n >= 4:
+        fitted_ar = phi1 * d_res[1:-1] + phi2 * d_res[:-2]
+        eps_ar    = d_res[2:] - fitted_ar
+        if len(eps_ar) >= 2:
+            num   = float(np.dot(eps_ar[:-1], eps_ar[1:]))
+            den   = float(np.dot(eps_ar[:-1], eps_ar[:-1])) + 1e-10
+            theta = float(np.clip(num / den, -0.9, 0.9))
+            last_eps = float(eps_ar[-1])
+
+    # ── Pronóstico h pasos hacia adelante ─────────────────────────────────
+    last_res = float(residuos[-1])
+    d_buf    = list(d_res[-2:]) if n >= 2 else [0.0, 0.0]
+    eps_fut  = last_eps
+
+    forecast = []
+    alertas  = []
+
+    for h in range(1, horizonte + 1):
+        min_fut = minuto_actual + h
+        if min_fut > 1440:
+            break
+
+        d1     = d_buf[-1] if len(d_buf) >= 1 else 0.0
+        d2     = d_buf[-2] if len(d_buf) >= 2 else 0.0
+        d_pred = phi1 * d1 + phi2 * d2 + theta * eps_fut
+
+        last_res = last_res + d_pred
+        sp_fut   = float(max(0.0, _cs(float(min_fut))))
+        dem_pred = round(float(max(0.0, sp_fut + last_res)), 2)
+        alerta   = bool(dem_pred > ALERTA_UMBRAL)
+
+        forecast.append({
+            "minuto":   min_fut,
+            "hora_str": _hora_str(min_fut),
+            "demanda":  dem_pred,
+            "spline":   round(sp_fut, 2),
+            "alerta":   alerta,
+        })
+        if alerta:
+            alertas.append({
+                "minuto":       min_fut,
+                "hora_str":     _hora_str(min_fut),
+                "demanda_pred": dem_pred,
+                "nivel":        "critica" if dem_pred > ALERTA_UMBRAL * 1.2 else "alta",
+            })
+
+        d_buf.append(d_pred)
+        eps_fut = 0.0   # E[ε_{t+h}] = 0 para h > 1
+
+    # Historia submuestreada para el gráfico (máx 60 puntos)
+    paso = max(1, len(hist_x) // 60)
+    historia = [
+        {
+            "minuto":   int(hist_x[i]),
+            "hora_str": _hora_str(int(hist_x[i])),
+            "demanda":  round(float(hist_y[i]), 2),
+            "spline":   round(float(spline_hist[i]), 2),
+        }
+        for i in range(0, len(hist_x), paso)
+    ]
+
+    return {
+        "minuto_actual": minuto_actual,
+        "hora_actual":   _hora_str(minuto_actual),
+        "horizonte":     horizonte,
+        "umbral_alerta": ALERTA_UMBRAL,
+        "parametros": {
+            "phi1":  round(phi1, 6),
+            "phi2":  round(phi2, 6),
+            "theta": round(theta, 6),
+            "orden": "ARIMA(2,1,1)",
+        },
+        "forecast": forecast,
+        "alertas":  alertas,
+        "historia": historia,
+    }
+
+
 def set_datos_raw(nuevos_datos: list[tuple[float, float]]) -> None:
     """
     Reemplaza los datos de demanda y recalcula todos los modelos.
