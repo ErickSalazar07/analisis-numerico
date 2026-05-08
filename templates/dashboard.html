@@ -63,6 +63,68 @@
     </div>
   </div>
 
+  <!-- ── Comparativa de modelos: Spline vs Lagrange ─────────── -->
+  <div class="model-compare-panel fade-up">
+    <div class="model-compare-head">
+      <h2 class="chart-title" style="margin-bottom:0;">
+        Comparativa de Modelos
+        <span class="badge">Spline Cúbico vs Lagrange</span>
+      </h2>
+      <p class="compare-method">{{ comparativa_modelos.metodologia }}</p>
+    </div>
+
+    <div class="compare-kpis">
+      <div class="compare-kpi">
+        <p class="compare-label">RMSE LOOCV · Spline</p>
+        <p class="compare-value spline">{{ "%.6f"|format(comparativa_modelos.rmse_loocv.spline) }}</p>
+      </div>
+      <div class="compare-kpi">
+        <p class="compare-label">RMSE LOOCV · Lagrange</p>
+        <p class="compare-value lagrange">{{ "%.6f"|format(comparativa_modelos.rmse_loocv.lagrange) }}</p>
+      </div>
+      <div class="compare-kpi">
+        <p class="compare-label">MAE LOOCV · Spline</p>
+        <p class="compare-value spline">{{ "%.6f"|format(comparativa_modelos.mae_loocv.spline) }}</p>
+      </div>
+      <div class="compare-kpi">
+        <p class="compare-label">MAE LOOCV · Lagrange</p>
+        <p class="compare-value lagrange">{{ "%.6f"|format(comparativa_modelos.mae_loocv.lagrange) }}</p>
+      </div>
+      <div class="compare-kpi">
+        <p class="compare-label">RMSE en nodos · Spline</p>
+        <p class="compare-value spline">{{ "%.8f"|format(comparativa_modelos.rmse_nodos.spline) }}</p>
+      </div>
+      <div class="compare-kpi">
+        <p class="compare-label">RMSE en nodos · Lagrange</p>
+        <p class="compare-value lagrange">{{ "%.8f"|format(comparativa_modelos.rmse_nodos.lagrange) }}</p>
+      </div>
+    </div>
+
+    <div class="compare-summary">
+      <span>Mejor RMSE (LOOCV): <strong>{{ comparativa_modelos.mejor_modelo }}</strong></span>
+      <span>
+        Peor error abs (Spline): <strong>{{ "%.4f"|format(comparativa_modelos.max_abs_error_loocv.spline.valor) }}</strong>
+        en {{ comparativa_modelos.max_abs_error_loocv.spline.hora_str }}
+      </span>
+      <span>
+        Peor error abs (Lagrange): <strong>{{ "%.4f"|format(comparativa_modelos.max_abs_error_loocv.lagrange.valor) }}</strong>
+        en {{ comparativa_modelos.max_abs_error_loocv.lagrange.hora_str }}
+      </span>
+    </div>
+  </div>
+
+  <div class="charts-grid">
+    <div class="chart-panel fade-up">
+      <h2 class="chart-title">
+        Error Absoluto por Punto de Control
+        <span class="badge">LOOCV</span>
+      </h2>
+      <div class="chart-container">
+        <canvas id="chartComparativaErrores"></canvas>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Gráfico 1: Datos originales ───────────────────────── -->
   <div class="charts-grid">
     <div class="chart-panel fade-up">
@@ -71,10 +133,7 @@
         <span class="badge">11 puntos de control</span>
       </h2>
       <div class="chart-container">
-        <img
-            src="{{ url_for('static', filename='img/grafico_datos_originales.png')}}"
-            alt="Grafico datos originales"
-        />
+        <canvas id="chartOriginal"></canvas>
       </div>
     </div>
   </div>
@@ -94,6 +153,19 @@
               loading="lazy"
           />
         </canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Comparativa curvas completas: Spline vs Lagrange ── -->
+  <div class="charts-grid">
+    <div class="chart-panel fade-up">
+      <h2 class="chart-title">
+        Spline Cúbico vs Lagrange — Curvas completas
+        <span class="badge">1&nbsp;440 minutos</span>
+      </h2>
+      <div class="chart-container" style="height:360px;">
+        <canvas id="chartCurvesComparison"></canvas>
       </div>
     </div>
   </div>
@@ -157,8 +229,10 @@ actualizarReloj();
 setInterval(actualizarReloj, 1000);
 
 /* ── Datos embebidos desde Flask (evita fetch extra) ────────── */
-const puntosControl = {{ puntos_control | tojson }};
-const splineData    = {{ spline_data    | tojson }};
+const puntosControl      = {{ puntos_control      | tojson }};
+const splineData         = {{ spline_data         | tojson }};
+const lagrangeData       = {{ lagrange_data       | tojson }};
+const comparativaModelos = {{ comparativa_modelos | tojson }};
 
 /* ── Colores compartidos ─────────────────────────────────────── */
 const C_AMBER  = '#f5a623';
@@ -234,6 +308,53 @@ function baseScales(xLabel, yLabel) {
 })();
 
 /* ══════════════════════════════════════════════════════════════
+   COMPARATIVA DE ERRORES — Spline vs Lagrange (LOOCV)
+   ══════════════════════════════════════════════════════════════ */
+(function() {
+  const errores = comparativaModelos.errores_por_punto || [];
+  const labels = errores.map(e => e.hora_str);
+  const absSpline = errores.map(e => e.abs_error_spline);
+  const absLagrange = errores.map(e => e.abs_error_lagrange);
+
+  new Chart(document.getElementById('chartComparativaErrores'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Abs error · Spline',
+          data: absSpline,
+          borderColor: C_BLUE,
+          backgroundColor: 'rgba(59,130,246,0.28)',
+          borderWidth: 1,
+        },
+        {
+          label: 'Abs error · Lagrange',
+          data: absLagrange,
+          borderColor: C_AMBER,
+          backgroundColor: 'rgba(245,166,35,0.28)',
+          borderWidth: 1,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 900, easing: 'easeOutQuart' },
+      plugins: {
+        legend: { labels: { font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)} rpm`,
+          }
+        }
+      },
+      scales: baseScales('Punto omitido (hora)', 'Error absoluto (rpm)')
+    }
+  });
+})();
+
+/* ══════════════════════════════════════════════════════════════
    GRÁFICO 2 — Spline cúbico (1 440 minutos)
    Muestra solo cada 10 minutos para no saturar el canvas
    ══════════════════════════════════════════════════════════════ */
@@ -301,6 +422,71 @@ function baseScales(xLabel, yLabel) {
           min: 0,
         }
       }
+    }
+  });
+})();
+
+/* ══════════════════════════════════════════════════════════════
+   CURVAS COMPLETAS — Spline vs Lagrange
+   ══════════════════════════════════════════════════════════════ */
+(function() {
+  const step    = 10;
+  const muestra = splineData.filter((_, i) => i % step === 0);
+  const lagMuestra = lagrangeData.filter((_, i) => i % step === 0);
+  const labels  = muestra.map(p => p.hora_str);
+
+  new Chart(document.getElementById('chartCurvesComparison'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Spline Cúbico',
+          data: muestra.map(p => p.demanda),
+          borderColor: C_BLUE,
+          backgroundColor: 'rgba(59,130,246,0.08)',
+          pointRadius: 0,
+          borderWidth: 2.5,
+          tension: 0.4,
+          fill: true,
+        },
+        {
+          label: 'Lagrange',
+          data: lagMuestra.map(p => p.demanda),
+          borderColor: C_AMBER,
+          backgroundColor: 'rgba(245,166,35,0.07)',
+          pointRadius: 0,
+          borderWidth: 2,
+          borderDash: [6, 3],
+          tension: 0.3,
+          fill: false,
+        },
+        {
+          label: 'Puntos de control',
+          data: puntosControl.map(p => ({ x: (() => { const hh=String(Math.floor(p.hora)).padStart(2,'0'); const mm=String(Math.round((p.hora%1)*60)).padStart(2,'0'); return `${hh}:${mm}`; })(), y: p.demanda })),
+          type: 'scatter',
+          borderColor: C_GREEN,
+          backgroundColor: C_GREEN,
+          pointRadius: 6,
+          pointHoverRadius: 9,
+          showLine: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 1000, easing: 'easeOutCubic' },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y.toFixed(2) : '—'} rpm`,
+          }
+        }
+      },
+      scales: baseScales('Hora del día (cada 10 min)', 'Solicitudes / minuto'),
     }
   });
 })();

@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
 
   <!-- Chart.js (para gráficos interactivos en dashboard) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
   {% block head %}{% endblock %}
 </head>
@@ -18,8 +18,13 @@
   <!-- ── Navbar ─────────────────────────────────────────── -->
   <nav class="navbar">
     <a class="nav-brand" href="{{ url_for('landing') }}">
-      <span class="dot"></span>
-      Taxi<span style="color:var(--amber)">Demand</span>
+      <span class="nav-brand-mark">
+        <img src="{{ url_for('static', filename='img/optiTaxi.png') }}" alt="Logo de OptiTaxi" />
+      </span>
+      <span class="nav-brand-copy">
+        <span class="nav-brand-kicker">OptiTaxi</span>
+        <span class="nav-brand-name">TaxiDemand</span>
+      </span>
     </a>
 
     <ul class="nav-links">
@@ -43,7 +48,12 @@
 
   <!-- ── Footer ─────────────────────────────────────────── -->
   <footer>
-    <span>TaxiDemand &copy; {{ 2025 }} — Análisis Numérico</span>
+    <span class="footer-brand">
+      <span class="footer-brand-mark">
+        <img src="{{ url_for('static', filename='img/optiTaxi.png') }}" alt="Logo de OptiTaxi" />
+      </span>
+      <span>TaxiDemand &copy; {{ 2025 }} — Análisis Numérico</span>
+    </span>
     <span>Splines Cúbicos · CubicSpline · Flask</span>
   </footer>
 

@@ -18,8 +18,10 @@ from flask import (
 from spline import (
     get_puntos_control,
     get_spline_completo,
+    get_lagrange_completo,
     get_resumen,
     get_demanda_en_minuto,
+    get_comparativa_modelos,
 )
 
 app = Flask(__name__)
@@ -33,7 +35,9 @@ USUARIOS = {
 # ── Datos precalculados al arrancar (no recalcular en cada req) 
 _PUNTOS_CONTROL = get_puntos_control()
 _SPLINE_DATA    = get_spline_completo()
+_LAGRANGE_DATA  = get_lagrange_completo()
 _RESUMEN        = get_resumen()
+_COMPARATIVA    = get_comparativa_modelos()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -90,9 +94,11 @@ def logout():
 def dashboard():
     return render_template(
         "dashboard.html",
-        resumen        = _RESUMEN,
-        puntos_control = _PUNTOS_CONTROL,
-        spline_data    = _SPLINE_DATA,
+        resumen             = _RESUMEN,
+        puntos_control      = _PUNTOS_CONTROL,
+        spline_data         = _SPLINE_DATA,
+        lagrange_data       = _LAGRANGE_DATA,
+        comparativa_modelos = _COMPARATIVA,
     )
 
 
@@ -106,6 +112,7 @@ def api_spline():
     """Devuelve los 1441 puntos del spline como JSON."""
     return jsonify({
         "resumen": _RESUMEN,
+        "comparativa_modelos": _COMPARATIVA,
         "datos":   _SPLINE_DATA,
     })
 
