@@ -14,7 +14,7 @@
 
   <p class="hero-subtitle fade-up">
     Interpolación de Splines Cúbicos sobre 1&nbsp;440 minutos del día.
-    Visualiza la demanda, el tiempo de espera y el comportamiento
+    Visualiza la demanda y el comportamiento
     de la flota con precisión matemática.
   </p>
 
@@ -23,14 +23,6 @@
     <div class="hero-stat">
       <span class="value">{{ resumen.max_demanda.valor|int }}</span>
       <span class="label">solicitudes pico · {{ resumen.max_demanda.hora_str }}</span>
-    </div>
-    <div class="hero-stat">
-      <span class="value">{{ resumen.num_taxis }}</span>
-      <span class="label">taxis activos</span>
-    </div>
-    <div class="hero-stat">
-      <span class="value">{{ "%.2f"|format(resumen.max_t_espera.valor) }}</span>
-      <span class="label">min espera máx.</span>
     </div>
   </div>
 
@@ -58,12 +50,10 @@
 
   <div class="feature-card">
     <span class="feature-icon">⏱</span>
-    <h3 class="feature-title">Tiempo de Espera</h3>
+    <h3 class="feature-title">Consulta por Minuto</h3>
     <p class="feature-desc">
-      Cálculo en tiempo real de
-      <em>T<sub>espera</sub> = demanda / N<sub>taxis</sub></em>
-      para cada minuto. Identifica los momentos de mayor presión
-      sobre la flota.
+      Consulta la demanda interpolada para cualquier minuto del día.
+      Identifica los momentos de mayor presión sobre la flota.
     </p>
   </div>
 

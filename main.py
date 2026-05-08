@@ -13,7 +13,7 @@ Rutas:
 
 from flask import (
     Flask, render_template, request,
-    redirect, url_for, session, jsonify
+    redirect, url_for, session, jsonify, flash, Response
 )
 from spline import (
     get_puntos_control,
@@ -22,6 +22,7 @@ from spline import (
     get_resumen,
     get_demanda_en_minuto,
     get_comparativa_modelos,
+    set_datos_raw,
 )
 
 app = Flask(__name__)
@@ -99,6 +100,108 @@ def dashboard():
         spline_data         = _SPLINE_DATA,
         lagrange_data       = _LAGRANGE_DATA,
         comparativa_modelos = _COMPARATIVA,
+    )
+
+
+# ══════════════════════════════════════════════════════════════
+#  CARGA DE CSV POR EL USUARIO
+# ══════════════════════════════════════════════════════════════
+
+MAX_CSV_BYTES = 256 * 1024  # 256 KB
+
+@app.route("/upload-csv", methods=["POST"])
+@login_required
+def upload_csv():
+    global _PUNTOS_CONTROL, _SPLINE_DATA, _LAGRANGE_DATA, _RESUMEN, _COMPARATIVA
+
+    archivo = request.files.get("csv_file")
+    if not archivo or archivo.filename == "":
+        flash("Selecciona un archivo CSV antes de enviar.", "error")
+        return redirect(url_for("dashboard"))
+
+    if not archivo.filename.lower().endswith(".csv"):
+        flash("Solo se aceptan archivos con extensión .csv", "error")
+        return redirect(url_for("dashboard"))
+
+    raw = archivo.read(MAX_CSV_BYTES + 1)
+    if len(raw) > MAX_CSV_BYTES:
+        flash("El archivo supera el tamaño máximo permitido (256 KB).", "error")
+        return redirect(url_for("dashboard"))
+
+    try:
+        texto = raw.decode("utf-8-sig")  # utf-8-sig elimina BOM de Excel
+    except UnicodeDecodeError:
+        flash("El archivo no está en formato UTF-8.", "error")
+        return redirect(url_for("dashboard"))
+
+    datos = []
+    errores_linea = []
+    for num, linea in enumerate(texto.splitlines(), start=1):
+        linea = linea.strip()
+        if not linea:
+            continue
+        partes = linea.replace(";", ",").split(",")
+        if len(partes) < 2:
+            continue
+        try:
+            hora    = float(partes[0].strip())
+            demanda = float(partes[1].strip())
+        except ValueError:
+            if num == 1:
+                continue  # saltar encabezado
+            errores_linea.append(num)
+            continue
+
+        if not (0.0 <= hora <= 24.0):
+            flash(f"Línea {num}: la hora {hora} está fuera del rango [0, 24].", "error")
+            return redirect(url_for("dashboard"))
+        if demanda < 0:
+            flash(f"Línea {num}: la demanda no puede ser negativa.", "error")
+            return redirect(url_for("dashboard"))
+
+        datos.append((hora, demanda))
+
+    if errores_linea:
+        flash(f"Se ignoraron {len(errores_linea)} líneas con valores no numéricos.", "warning")
+
+    if len(datos) < 4:
+        flash("El CSV debe tener al menos 4 puntos válidos (hora, demanda).", "error")
+        return redirect(url_for("dashboard"))
+
+    # Verificar horas únicas (CubicSpline las requiere)
+    horas_unicas = {h for h, _ in datos}
+    if len(horas_unicas) != len(datos):
+        flash("El CSV contiene horas duplicadas. Cada hora debe aparecer solo una vez.", "error")
+        return redirect(url_for("dashboard"))
+
+    try:
+        set_datos_raw(datos)
+    except Exception as e:
+        flash(f"Error al recalcular los modelos: {e}", "error")
+        return redirect(url_for("dashboard"))
+
+    _PUNTOS_CONTROL = get_puntos_control()
+    _SPLINE_DATA    = get_spline_completo()
+    _LAGRANGE_DATA  = get_lagrange_completo()
+    _RESUMEN        = get_resumen()
+    _COMPARATIVA    = get_comparativa_modelos()
+
+    flash(f"Datos actualizados correctamente ({len(datos)} puntos de control cargados).", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/csv-template")
+@login_required
+def csv_template():
+    """Descarga el CSV de plantilla con los datos actuales."""
+    lineas = ["hora,demanda"]
+    for p in _PUNTOS_CONTROL:
+        lineas.append(f"{p['hora']},{p['demanda']}")
+    contenido = "\n".join(lineas)
+    return Response(
+        contenido,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=datos_demanda.csv"},
     )
 
 

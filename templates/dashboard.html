@@ -4,6 +4,17 @@
 {% block content %}
 <div class="dashboard">
 
+  <!-- ── Mensajes flash ─────────────────────────────────────── -->
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}
+      <div class="flash-list">
+        {% for cat, msg in msgs %}
+          <div class="flash-msg flash-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
   <!-- ── Encabezado ─────────────────────────────────────────── -->
   <div class="dash-header fade-up">
     <h1 class="dash-title">Panel de <span>Demanda</span></h1>
@@ -18,48 +29,9 @@
       <p class="kpi-sub">solicitudes · {{ resumen.max_demanda.hora_str }}</p>
     </div>
     <div class="kpi-card fade-up">
-      <p class="kpi-label">T. espera máx.</p>
-      <p class="kpi-value">{{ "%.3f"|format(resumen.max_t_espera.valor) }}</p>
-      <p class="kpi-sub">min · {{ resumen.max_t_espera.hora_str }}</p>
-    </div>
-    <div class="kpi-card fade-up">
       <p class="kpi-label">Demanda promedio</p>
       <p class="kpi-value">{{ resumen.demanda_promedio|int }}</p>
       <p class="kpi-sub">solicitudes / minuto (día completo)</p>
-    </div>
-    <div class="kpi-card fade-up">
-      <p class="kpi-label">Taxis activos</p>
-      <p class="kpi-value">{{ resumen.num_taxis }}</p>
-      <p class="kpi-sub">flota disponible</p>
-    </div>
-    <div class="kpi-card fade-up">
-      <p class="kpi-label">T. espera prom.</p>
-      <p class="kpi-value">{{ "%.4f"|format(resumen.t_espera_promedio) }}</p>
-      <p class="kpi-sub">min promedio diario</p>
-    </div>
-  </div>
-
-  <!-- ── Fórmula T_espera ───────────────────────────────────── -->
-  <div class="formula-panel fade-up">
-    <div>
-      <p class="formula-label">Modelo matemático</p>
-      <p class="formula-expr">
-        <var class="var">T<sub>espera</sub></var>
-        &nbsp;=&nbsp;
-        <var class="var">demanda</var>
-        &nbsp;/&nbsp;
-        <span class="num">N<sub>taxis</sub></span>
-        &nbsp;=&nbsp;
-        <var class="var">demanda</var>
-        &nbsp;/&nbsp;
-        <span class="num">{{ resumen.num_taxis }}</span>
-      </p>
-    </div>
-    <div class="formula-result">
-      <p class="res-label">Pico del día</p>
-      <p class="res-value">
-        {{ "%.4f"|format(resumen.max_t_espera.valor) }}&nbsp;<small style="font-size:1rem;color:var(--text-dim)">min</small>
-      </p>
     </div>
   </div>
 
@@ -185,6 +157,48 @@
     </div>
   </div>
 
+  <!-- ── Carga de datos CSV ───────────────────────────────────── -->
+  <div class="upload-panel fade-up">
+    <div class="upload-panel-head">
+      <div>
+        <h2 class="upload-title">Actualizar datos desde CSV</h2>
+        <p class="upload-desc">
+          Sube un archivo <code>.csv</code> con dos columnas: <code>hora</code> (0–24) y
+          <code>demanda</code> (solicitudes). El spline y el modelo Lagrange se recalcularán
+          automáticamente.
+        </p>
+      </div>
+      <a class="btn btn-outline" href="{{ url_for('csv_template') }}">
+        ↓ Descargar plantilla
+      </a>
+    </div>
+
+    <form class="upload-form" method="POST" action="{{ url_for('upload_csv') }}"
+          enctype="multipart/form-data">
+      <label class="upload-drop" id="uploadDrop" for="csvFileInput">
+        <span class="upload-icon"></span>
+        <span class="upload-hint" id="uploadHint">Arrastra un .csv aquí o haz clic para elegir</span>
+        <input type="file" id="csvFileInput" name="csv_file" accept=".csv" hidden
+               onchange="document.getElementById('uploadHint').textContent = this.files[0]?.name || 'Elige un archivo'" />
+      </label>
+      <button class="btn btn-primary" type="submit">Cargar y recalcular →</button>
+    </form>
+
+    <details class="upload-format">
+      <summary>Formato esperado del CSV</summary>
+      <pre>hora,demanda
+0.0,15
+1.5,18
+6.0,45
+9.0,120
+12.0,180
+…</pre>
+      <p>• Separador: coma <code>,</code> o punto y coma <code>;</code><br>
+         • La primera fila puede ser encabezado (se ignora automáticamente)<br>
+         • Mínimo 4 puntos · Horas únicas y ordenadas en [0, 24]</p>
+    </details>
+  </div>
+
   <!-- ── Consultor puntual ──────────────────────────────────── -->
   <div class="query-panel fade-up">
     <div class="form-group">
@@ -202,10 +216,6 @@
       <div class="query-stat">
         <span class="qs-label">Demanda</span>
         <span class="qs-value" id="qDemanda">—</span>
-      </div>
-      <div class="query-stat">
-        <span class="qs-label">T_espera</span>
-        <span class="qs-value" id="qEspera">—</span>
       </div>
     </div>
   </div>
@@ -363,7 +373,6 @@ function baseScales(xLabel, yLabel) {
   const muestra = splineData.filter((_, i) => i % step === 0);
   const labels  = muestra.map(p => p.hora_str);
   const demanda = muestra.map(p => p.demanda);
-  const espera  = muestra.map(p => +(p.t_espera * 100).toFixed(4)); // ×100 para escala legible
 
   new Chart(document.getElementById('chartSpline'), {
     type: 'line',
@@ -380,18 +389,6 @@ function baseScales(xLabel, yLabel) {
           tension: 0.4,
           fill: true,
           yAxisID: 'y',
-        },
-        {
-          label: 'T_espera × 100 (min)',
-          data: espera,
-          borderColor: C_GREEN,
-          backgroundColor: 'transparent',
-          pointRadius: 0,
-          borderWidth: 1.5,
-          borderDash: [5, 3],
-          tension: 0.4,
-          fill: false,
-          yAxisID: 'y2',
         }
       ]
     },
@@ -403,25 +400,11 @@ function baseScales(xLabel, yLabel) {
         legend: { labels: { font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: ctx => {
-              if (ctx.datasetIndex === 0)
-                return ` Demanda: ${ctx.parsed.y.toFixed(2)} solicitudes`;
-              return ` T_espera: ${(ctx.parsed.y / 100).toFixed(4)} min`;
-            }
+            label: ctx => ` Demanda: ${ctx.parsed.y.toFixed(2)} solicitudes`,
           }
         }
       },
-      scales: {
-        ...baseScales('Hora del día (cada 10 min)', 'Solicitudes / minuto'),
-        y2: {
-          type: 'linear', position: 'right',
-          ticks: { font: { size: 10 },
-                   callback: v => (v / 100).toFixed(3) },
-          title: { display: true, text: 'T_espera (min)', font: { size: 11 } },
-          grid: { drawOnChartArea: false },
-          min: 0,
-        }
-      }
+      scales: baseScales('Hora del día (cada 10 min)', 'Solicitudes / minuto'),
     }
   });
 })();
@@ -509,7 +492,6 @@ async function consultarMinuto() {
 
     document.getElementById('qHora').textContent    = data.hora_str;
     document.getElementById('qDemanda').textContent = data.demanda.toFixed(2) + ' solicitudes';
-    document.getElementById('qEspera').textContent  = data.t_espera.toFixed(6) + ' min';
     document.getElementById('queryResult').style.display = 'flex';
   } catch (e) {
     console.error(e);

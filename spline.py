@@ -4,15 +4,11 @@ spline.py — Lógica de interpolación de Splines Cúbicos
 Módulo independiente de Flask. Contiene:
   - Datos originales de demanda (horas → minutos)
   - Interpolación con CubicSpline (1440 valores)
-  - Cálculo de T_espera = demanda / NUM_TAXIS
   - Funciones de acceso para la app Flask
 """
 
 import numpy as np
 from scipy.interpolate import CubicSpline, BarycentricInterpolator
-
-# ── Constantes ─────────────────────────────────────────────────────────────
-NUM_TAXIS = 200  # flota disponible (denominador de T_espera)
 
 # ── Datos originales (horas, solicitudes/minuto) ───────────────────────────
 # El punto (24.0, 0.0) es 00:00 del día siguiente, no se duplica
@@ -29,6 +25,9 @@ DATOS_RAW = [
     (21.0,  55.0),
     (24.0,   0.0),
 ]
+
+# Datos activos (pueden sobreescribirse con set_datos_raw)
+_datos_actuales = list(DATOS_RAW)
 
 # ── Conversión horas → minutos ─────────────────────────────────────────────
 _horas   = np.array([d[0] for d in DATOS_RAW])
@@ -74,7 +73,7 @@ def get_puntos_control() -> list[dict]:
             "minuto":  int(h * 60),
             "demanda": float(d),
         }
-        for h, d in DATOS_RAW
+        for h, d in _datos_actuales
     ]
 
 
@@ -87,7 +86,6 @@ def get_spline_completo() -> list[dict]:
           "minuto":   int,    # 0 … 1440
           "hora_str": "HH:MM",
           "demanda":  float,  # solicitudes/minuto  (≥ 0)
-          "t_espera": float,  # minutos de espera = demanda / NUM_TAXIS
         }
     """
     resultado = []
@@ -96,7 +94,6 @@ def get_spline_completo() -> list[dict]:
             "minuto":   int(x),
             "hora_str": _hora_str(int(x)),
             "demanda":  round(float(y), 4),
-            "t_espera": round(float(y) / NUM_TAXIS, 6),
         })
     return resultado
 
@@ -110,7 +107,6 @@ def get_lagrange_completo() -> list[dict]:
           "minuto":   int,
           "hora_str": "HH:MM",
           "demanda":  float,
-          "t_espera": float,
         }
     """
     resultado = []
@@ -119,7 +115,6 @@ def get_lagrange_completo() -> list[dict]:
             "minuto":   int(x),
             "hora_str": _hora_str(int(x)),
             "demanda":  round(float(y), 4),
-            "t_espera": round(float(y) / NUM_TAXIS, 6),
         })
     return resultado
 
@@ -222,20 +217,16 @@ def get_resumen() -> dict:
 
     Retorna:
         {
-          "num_taxis":       int,
           "total_minutos":   int,
           "max_demanda":     {"valor": float, "minuto": int, "hora_str": str},
           "min_demanda":     {"valor": float, "minuto": int, "hora_str": str},
-          "max_t_espera":    {"valor": float, "minuto": int, "hora_str": str},
           "demanda_promedio": float,
-          "t_espera_promedio": float,
         }
     """
     idx_max = int(np.argmax(_y))
     idx_min = int(np.argmin(_y))
 
     return {
-        "num_taxis":     NUM_TAXIS,
         "total_minutos": int(_x[-1]),
         "max_demanda": {
             "valor":    round(float(_y[idx_max]), 2),
@@ -247,19 +238,13 @@ def get_resumen() -> dict:
             "minuto":   int(_x[idx_min]),
             "hora_str": _hora_str(int(_x[idx_min])),
         },
-        "max_t_espera": {
-            "valor":    round(float(_y[idx_max]) / NUM_TAXIS, 4),
-            "minuto":   int(_x[idx_max]),
-            "hora_str": _hora_str(int(_x[idx_max])),
-        },
         "demanda_promedio":   round(float(_y.mean()), 4),
-        "t_espera_promedio":  round(float(_y.mean()) / NUM_TAXIS, 6),
     }
 
 
 def get_demanda_en_minuto(minuto: int) -> dict:
     """
-    Consulta puntual: devuelve demanda y T_espera para un minuto dado.
+    Consulta puntual: devuelve demanda para un minuto dado.
 
     Args:
         minuto: entero entre 0 y 1440.
@@ -269,7 +254,6 @@ def get_demanda_en_minuto(minuto: int) -> dict:
           "minuto":   int,
           "hora_str": "HH:MM",
           "demanda":  float,
-          "t_espera": float,
         }
 
     Raises:
@@ -283,8 +267,36 @@ def get_demanda_en_minuto(minuto: int) -> dict:
         "minuto":   minuto,
         "hora_str": _hora_str(minuto),
         "demanda":  round(valor, 4),
-        "t_espera": round(valor / NUM_TAXIS, 6),
     }
+
+
+def set_datos_raw(nuevos_datos: list[tuple[float, float]]) -> None:
+    """
+    Reemplaza los datos de demanda y recalcula todos los modelos.
+
+    Args:
+        nuevos_datos: lista de tuplas (hora_decimal, demanda).
+                      Debe tener al menos 4 puntos.
+                      Las horas deben ser únicas y en rango [0, 24].
+    """
+    global _datos_actuales, _horas, _demanda, _minutos
+    global _cs, _lagrange, _x, _y, _y_lagrange
+
+    datos = sorted(nuevos_datos, key=lambda t: t[0])  # ordenar por hora
+    _datos_actuales = list(datos)
+
+    _horas   = np.array([d[0] for d in _datos_actuales])
+    _demanda = np.array([d[1] for d in _datos_actuales])
+    _minutos = _horas * 60
+
+    max_min = int(round(float(_minutos[-1])))
+    _x = np.arange(0, max_min + 1)
+
+    _cs       = CubicSpline(_minutos, _demanda)
+    _lagrange = BarycentricInterpolator(_minutos, _demanda)
+
+    _y         = np.clip(_cs(_x), 0, None)
+    _y_lagrange = np.clip(_lagrange(_x), 0, None)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -306,5 +318,4 @@ if __name__ == "__main__":
 
     print("\n=== Primeros 5 valores del spline completo ===")
     for row in get_spline_completo()[:5]:
-        print(f"  {row['hora_str']}  demanda={row['demanda']:>8.4f}  "
-              f"T_espera={row['t_espera']:.6f} min")
+        print(f"  {row['hora_str']}  demanda={row['demanda']:>8.4f}")

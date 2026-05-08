@@ -597,58 +597,6 @@ a:hover { color: var(--text-bright); }
   position: relative;
 }
 
-/* Fórmula T_espera */
-.formula-panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--amber);
-  padding: 1.5rem 2rem;
-  margin-top: 1px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 2rem;
-  align-items: center;
-}
-
-.formula-label {
-  font-size: 0.7rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--amber);
-  margin-bottom: 0.6rem;
-}
-
-.formula-expr {
-  font-family: var(--display);
-  font-weight: 300;
-  font-size: 1.5rem;
-  color: var(--text-bright);
-  letter-spacing: 0.04em;
-}
-
-.formula-expr .var { color: var(--amber); font-weight: 600; }
-.formula-expr .num { color: var(--blue); }
-
-.formula-result {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.formula-result .res-label {
-  font-size: 0.7rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin-bottom: 0.25rem;
-}
-
-.formula-result .res-value {
-  font-family: var(--display);
-  font-weight: 800;
-  font-size: 2.2rem;
-  color: var(--green);
-}
-
 /* Comparativa de modelos numéricos */
 .model-compare-panel {
   background: var(--surface);
@@ -773,6 +721,184 @@ a:hover { color: var(--text-bright); }
   display: block;
 }
 
+/* Imagen de animación GIF */
+.gif-container {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.gif-container img {
+  width: 100%;
+  display: block;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FLASH MESSAGES
+   ══════════════════════════════════════════════════════════════ */
+.flash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.flash-msg {
+  padding: 0.7rem 1.2rem;
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+  font-family: var(--mono);
+  border-left: 3px solid transparent;
+}
+
+.flash-success {
+  background: rgba(34,197,94,0.1);
+  border-left-color: var(--green);
+  color: var(--green);
+}
+
+.flash-error {
+  background: rgba(239,68,68,0.1);
+  border-left-color: #ef4444;
+  color: #ef4444;
+}
+
+.flash-warning {
+  background: rgba(245,166,35,0.1);
+  border-left-color: var(--amber);
+  color: var(--amber);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PANEL CARGA CSV
+   ══════════════════════════════════════════════════════════════ */
+.upload-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--amber);
+  padding: 1.6rem 2rem;
+  margin-top: 1px;
+}
+
+.upload-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.2rem;
+}
+
+.upload-title {
+  font-family: var(--display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--amber);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.3rem;
+}
+
+.upload-desc {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin: 0;
+  max-width: 560px;
+}
+
+.upload-desc code {
+  color: var(--amber);
+  font-family: var(--mono);
+}
+
+.upload-form {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.upload-drop {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex: 1;
+  min-width: 240px;
+  padding: 0.65rem 1rem;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.2s;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+.upload-drop:hover {
+  border-color: var(--amber);
+  color: var(--text-bright);
+}
+
+.upload-icon { font-size: 1.1rem; }
+
+.upload-format {
+  margin-top: 0.8rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.upload-format summary {
+  cursor: pointer;
+  color: var(--text-muted, var(--text-dim));
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+  user-select: none;
+}
+
+.upload-format pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem 1rem;
+  margin: 0.6rem 0;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--green);
+  overflow-x: auto;
+}
+
+.upload-format p {
+  margin: 0.4rem 0 0;
+  line-height: 1.8;
+}
+
+.upload-format p code {
+  color: var(--amber);
+  font-family: var(--mono);
+}
+
+.btn-outline {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.btn-outline:hover {
+  background: rgba(245,166,35,0.1);
+}
+
 /* ══════════════════════════════════════════════════════════════
    FOOTER
    ══════════════════════════════════════════════════════════════ */
@@ -842,7 +968,6 @@ footer span { letter-spacing: 0.08em; }
   .hero { padding: 3rem 1.5rem; }
   .login-logo { width: min(240px, 88%); margin-bottom: 1.1rem; }
   .hero-stats { gap: 1.5rem; }
-  .formula-panel { grid-template-columns: 1fr; }
   .model-compare-head { flex-direction: column; align-items: flex-start; }
   .dashboard { padding: 1.5rem 1rem; }
   .dash-header { flex-direction: column; }
