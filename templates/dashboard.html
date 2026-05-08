@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}TaxiDemand — Dashboard{% endblock %}
+{% block title %}OptiTaxi — Dashboard{% endblock %}
 
 {% block content %}
 <div class="dashboard">
@@ -62,14 +62,6 @@
         <p class="compare-label">MAE LOOCV · Lagrange</p>
         <p class="compare-value lagrange">{{ "%.6f"|format(comparativa_modelos.mae_loocv.lagrange) }}</p>
       </div>
-      <div class="compare-kpi">
-        <p class="compare-label">RMSE en nodos · Spline</p>
-        <p class="compare-value spline">{{ "%.8f"|format(comparativa_modelos.rmse_nodos.spline) }}</p>
-      </div>
-      <div class="compare-kpi">
-        <p class="compare-label">RMSE en nodos · Lagrange</p>
-        <p class="compare-value lagrange">{{ "%.8f"|format(comparativa_modelos.rmse_nodos.lagrange) }}</p>
-      </div>
     </div>
 
     <div class="compare-summary">
@@ -120,7 +112,7 @@
       <div class="chart-container">
         <canvas id="chartSpline">
           <img
-              src="{{ url_for('static', filename='img/grafico_spline_cubico.png')}}"
+              src="{{ url_for('static', filename='img/grafico_spline_cubico.png', v=spline_png_version)}}"
               alt="Grafico spline cubico"
               loading="lazy"
           />
@@ -150,7 +142,7 @@
         <span class="badge">matplotlib.animation</span>
       </h2>
       <div class="gif-container">
-        <img src="{{ url_for('static', filename='img/animacion_spline.gif') }}"
+        <img src="{{ url_for('static', filename='img/animacion_spline.gif', v=spline_gif_version) }}"
              alt="Animación spline cúbico"
              loading="lazy" />
       </div>

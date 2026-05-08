@@ -7,6 +7,9 @@ Módulo independiente de Flask. Contiene:
   - Funciones de acceso para la app Flask
 """
 
+import os
+from pathlib import Path
+
 import numpy as np
 from scipy.interpolate import CubicSpline, BarycentricInterpolator
 
@@ -49,11 +52,112 @@ _y_lagrange = _lagrange(_x)
 _y = np.clip(_y, 0, None)
 _y_lagrange = np.clip(_y_lagrange, 0, None)
 
+_BASE_DIR = Path(__file__).resolve().parent
+_STATIC_IMG_DIR = _BASE_DIR / "static" / "img"
+_PNG_PATH = _STATIC_IMG_DIR / "grafico_spline_cubico.png"
+_GIF_PATH = _STATIC_IMG_DIR / "animacion_spline.gif"
+
 
 def _hora_str(minuto: int) -> str:
     """Convierte un minuto del día a formato HH:MM."""
     hh, mm = divmod(minuto, 60)
     return f"{hh:02d}:{mm:02d}"
+
+
+def generar_recursos_visuales() -> dict[str, str]:
+    """
+    Regenera las imágenes estáticas del spline en `static/img`.
+
+    Crea:
+      - `grafico_spline_cubico.png`
+      - `animacion_spline.gif`
+    """
+    mpl_config_dir = _BASE_DIR / ".matplotlib"
+    mpl_config_dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("MPLCONFIGDIR", str(mpl_config_dir))
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.animation import FuncAnimation, PillowWriter
+
+    _STATIC_IMG_DIR.mkdir(parents=True, exist_ok=True)
+
+    x_horas = _x / 60.0
+    max_hora = float(_x[-1]) / 60.0 if len(_x) else 24.0
+    max_demanda = max(float(np.max(_y)) if len(_y) else 0.0,
+                      float(np.max(_demanda)) if len(_demanda) else 0.0)
+    y_lim = max(10.0, max_demanda * 1.12)
+
+    fig, ax = plt.subplots(figsize=(10, 5), dpi=140)
+    ax.plot(x_horas, _y, color="#0f766e", linewidth=2.5, label="Spline cúbico")
+    ax.scatter(_horas, _demanda, color="#ea580c", s=42, zorder=3, label="Puntos de control")
+    ax.set_title("Interpolación por spline cúbico")
+    ax.set_xlabel("Hora")
+    ax.set_ylabel("Demanda")
+    ax.set_xlim(0, max_hora)
+    ax.set_ylim(0, y_lim)
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc="upper left")
+    fig.tight_layout()
+    fig.savefig(_PNG_PATH, bbox_inches="tight")
+    plt.close(fig)
+
+    fig_anim, ax_anim = plt.subplots(figsize=(10, 5), dpi=110, facecolor="#0b1220")
+    ax_anim.set_facecolor("#0f172a")
+    ax_anim.set_title("Construcción progresiva del spline")
+    ax_anim.set_xlabel("Hora")
+    ax_anim.set_ylabel("Demanda")
+    ax_anim.set_xlim(0, max_hora)
+    ax_anim.set_ylim(0, y_lim)
+    ax_anim.grid(True, alpha=0.25, color="#94a3b8")
+    ax_anim.tick_params(colors="#e2e8f0")
+    ax_anim.xaxis.label.set_color("#e2e8f0")
+    ax_anim.yaxis.label.set_color("#e2e8f0")
+    ax_anim.title.set_color("#f8fafc")
+    for spine in ax_anim.spines.values():
+        spine.set_color("#334155")
+
+    puntos_anim = ax_anim.scatter([], [], color="#fb923c", s=42, zorder=3, label="Puntos cargados")
+    (linea_anim,) = ax_anim.plot([], [], color="#2dd4bf", linewidth=2.5, label="Spline")
+    legend = ax_anim.legend(loc="upper left")
+    legend.get_frame().set_facecolor("#111827")
+    legend.get_frame().set_edgecolor("#334155")
+    for text in legend.get_texts():
+        text.set_color("#e2e8f0")
+
+    total_frames = min(60, max(12, len(_x)))
+    frame_indices = np.linspace(1, len(_x), total_frames, dtype=int)
+
+    def _update(frame_idx: int):
+        upto = frame_indices[frame_idx]
+        minuto_actual = int(_x[upto - 1])
+        hora_actual = minuto_actual / 60.0
+
+        linea_anim.set_data(x_horas[:upto], _y[:upto])
+
+        mask_puntos = _horas <= hora_actual
+        puntos = np.column_stack((_horas[mask_puntos], _demanda[mask_puntos]))
+        puntos_anim.set_offsets(puntos if len(puntos) else np.empty((0, 2)))
+
+        ax_anim.set_title(f"Construcción progresiva del spline hasta {_hora_str(minuto_actual)}")
+        return linea_anim, puntos_anim
+
+    anim = FuncAnimation(
+        fig_anim,
+        _update,
+        frames=len(frame_indices),
+        interval=90,
+        blit=False,
+        repeat=True,
+    )
+    anim.save(_GIF_PATH, writer=PillowWriter(fps=12))
+    plt.close(fig_anim)
+
+    return {
+        "png": str(_PNG_PATH),
+        "gif": str(_GIF_PATH),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -449,6 +553,8 @@ def set_datos_raw(nuevos_datos: list[tuple[float, float]]) -> None:
 
     _y         = np.clip(_cs(_x), 0, None)
     _y_lagrange = np.clip(_lagrange(_x), 0, None)
+
+    generar_recursos_visuales()
 
 
 # ══════════════════════════════════════════════════════════════════════════

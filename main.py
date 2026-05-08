@@ -11,6 +11,8 @@ Rutas:
   GET  /api/consulta  → JSON consulta puntual ?minuto=N
 """
 
+from pathlib import Path
+
 from flask import (
     Flask, render_template, request,
     redirect, url_for, session, jsonify, flash, Response
@@ -24,10 +26,13 @@ from spline import (
     get_comparativa_modelos,
     get_arima_forecast,
     set_datos_raw,
+    generar_recursos_visuales,
 )
 
 app = Flask(__name__)
 app.secret_key = "taxi-demand-secret-2025"   # cambiar en producción
+_GIF_PATH = Path(__file__).resolve().parent / "static" / "img" / "animacion_spline.gif"
+_PNG_PATH = Path(__file__).resolve().parent / "static" / "img" / "grafico_spline_cubico.png"
 
 # ── Credenciales demo (en producción usar BD + hash) ──────────
 USUARIOS = {
@@ -40,6 +45,14 @@ _SPLINE_DATA    = get_spline_completo()
 _LAGRANGE_DATA  = get_lagrange_completo()
 _RESUMEN        = get_resumen()
 _COMPARATIVA    = get_comparativa_modelos()
+generar_recursos_visuales()
+
+
+def _asset_version(path: Path) -> int:
+    try:
+        return int(path.stat().st_mtime_ns)
+    except FileNotFoundError:
+        return 0
 
 
 # ══════════════════════════════════════════════════════════════
@@ -101,6 +114,8 @@ def dashboard():
         spline_data         = _SPLINE_DATA,
         lagrange_data       = _LAGRANGE_DATA,
         comparativa_modelos = _COMPARATIVA,
+        spline_png_version  = _asset_version(_PNG_PATH),
+        spline_gif_version  = _asset_version(_GIF_PATH),
     )
 
 

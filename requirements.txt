@@ -1,3 +1,5 @@
 flask
 scipy
 numpy
+matplotlib
+Pillow
