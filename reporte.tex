@@ -68,36 +68,301 @@ palabra clave 1, palabra clave 2, palabra clave 3, palabra clave 4
 % ============================================================
 \section{Introducción}
 
+La gestión eficiente de flotas de transporte autónomo en entornos urbanos requiere información continua y precisa sobre la demanda de pasajeros. AutoMove
+City opera una flota de 200 taxis autónomos en Bogotá y dispone de mediciones de demanda con una frecuencia de muestreo de cada 3 horas, lo que genera tan
+solo 10 observaciones a lo largo de un día de operación. Sin embargo, el sistema de despacho debe tomar decisiones de reasignación de vehículos cada
+minuto, lo que implica la necesidad de estimar 1440 valores intermedios a partir de los datos disponibles.
+
+Este escenario constituye un problema clásico de interpolación numérica: dado un conjunto discreto de pares $(x_i,\, y_i)$ que representan horas del día y
+solicitudes por minuto, se busca construir una función continua $S(x)$ que reproduzca exactamente los datos observados y proporcione estimaciones suaves y
+confiables en cualquier instante intermedio. La elección del método de interpolación es crítica, pues una función mal condicionada puede introducir
+oscilaciones espurias —conocidas como fenómeno de Runge— que distorsionen las predicciones de demanda y deterioren la calidad del despacho.
+
+En este trabajo se propone el uso de \textit{splines} cúbicos naturales como método de interpolación, implementados mediante la biblioteca
+\texttt{scipy.interpolate} de Python. Los \textit{splines} cúbicos ofrecen suavidad de segundo orden en todos los nodos, evitan las oscilaciones
+características de los polinomios de alto grado y permiten una evaluación eficiente sobre la malla de 1440 minutos requerida por el sistema de despacho.
+Adicionalmente, se propone una arquitectura de mejora tecnológica que combina la interpolación con un modelo predictivo ARIMA ligero y un sistema de
+alertas en tiempo real, orientado a reducir el tiempo de espera de los usuarios en al menos un 20\,\%.
+
+El artículo se organiza de la siguiente manera: la Sección~II describe la metodología general del estudio; la Sección~III presenta los fundamentos
+matemáticos de los \textit{splines} cúbicos; la Sección~IV detalla la implementación en Python; la Sección~V analiza los resultados; la Sección~VI expone
+la propuesta de mejora tecnológica; y la Sección~VII recoge las conclusiones.
+
 % ============================================================
-%  II. METODOLOGIA
+%  II. METODOLOGÍA
 % ============================================================
-\section{Metodologia}
+\section{Metodología}
+
+El desarrollo del presente estudio sigue una metodología estructurada en cinco etapas, descritas a continuación.
+
+\textbf{Etapa 1 – Definición del problema y adquisición de datos.} Se identifica la necesidad operativa de AutoMove City: estimar la demanda de pasajeros
+cada minuto a partir de diez mediciones horarias. El conjunto de datos $\{(x_i, y_i)\}_{i=0}^{9}$ comprende horas decimales en el intervalo $[0, 21]$ y
+valores de demanda expresados en solicitudes por minuto, tal como se especifica en la Tabla~I.
+
+\textbf{Etapa 2 – Selección y justificación del método de interpolación.} Se evalúan dos enfoques: el polinomio interpolador de Lagrange global y los
+\textit{splines} cúbicos por tramos. Con base en los criterios de estabilidad numérica, suavidad de la curva resultante y comportamiento ante nodos
+irregularmente espaciados, se seleccionan los \textit{splines} cúbicos. La justificación detallada se presenta en la Sección~III.
+
+\textbf{Etapa 3 – Implementación computacional.} Se implementa la interpolación mediante \texttt{CubicSpline} de \texttt{scipy.interpolate} y, de forma
+complementaria, mediante una implementación propia del sistema tridiagonal que define los coeficientes del \textit{spline}. La malla de evaluación cubre
+los 1440 minutos del día con paso de un minuto.
+
+\textbf{Etapa 4 – Validación y análisis de error.} Para cuantificar la precisión del método se emplea la técnica de validación cruzada de retención
+(\textit{hold-out}): dos puntos del conjunto original son excluidos del ajuste y utilizados como referencia para calcular el error cuadrático medio
+(RMSE). Se utiliza la expresión
+
+\begin{equation}
+\mathrm{RMSE} = \sqrt{\frac{1}{k}\sum_{j=1}^{k}
+    \bigl(y_j - S(x_j)\bigr)^2},
+\label{eq:rmse}
+\end{equation}
+
+\noindent donde $k$ es el número de puntos de validación, $y_j$ el valor real y $S(x_j)$ el valor interpolado. Adicionalmente, se compara visualmente la
+curva del \textit{spline} cúbico con la del polinomio de Lagrange sobre la misma malla.
+
+\textbf{Etapa 5 – Propuesta de mejora tecnológica.} Los resultados de la interpolación se integran en un prototipo de \textit{dashboard} interactivo que
+combina la curva suave con un modelo ARIMA de predicción a 30 minutos y un sistema de alertas automáticas cuando la demanda estimada supera un umbral
+crítico de 150 solicitudes por minuto.
 
 % ============================================================
 %  III. FUNDAMENTOS MATEMÁTICOS
 % ============================================================
-\section{Fundamentos matemáticos}
+\section{Fundamentos Matemáticos}
 
-\subsection{Ecuaciones}
+\subsection{Definición y ecuaciones de los \textit{splines} cúbicos}
 
-\subsection{Condiciones de continuidad}
+Dado un conjunto de $n+1$ nodos $x_0 < x_1 < \cdots < x_n$ con valores asociados $y_i = f(x_i)$, un \textit{spline} cúbico $S(x)$ es una función que
+satisface:
+
+\begin{enumerate}
+    \item En cada subintervalo $[x_i, x_{i+1}]$, $S(x)$ coincide con un polinomio cúbico $S_i(x)$.
+
+    \item $S(x_i) = y_i$ para todo $i = 0, 1, \ldots, n$ (interpolación exacta en los nodos).
+
+    \item $S \in \mathcal{C}^2[x_0, x_n]$, es decir, $S$, $S'$ y $S''$ son continuas en todo el intervalo.
+\end{enumerate}
+
+Cada pieza polinómica puede escribirse como
+
+\begin{equation}
+S_i(x) = a_i + b_i(x - x_i) + c_i(x - x_i)^2 + d_i(x - x_i)^3,
+\quad x \in [x_i,\, x_{i+1}],
+\label{eq:spline_piece}
+\end{equation}
+
+\noindent con coeficientes $a_i, b_i, c_i, d_i \in \mathbb{R}$. Definiendo $h_i = x_{i+1} - x_i$, los coeficientes se determinan mediante las relaciones
+
+\begin{align}
+a_i &= y_i, \label{eq:coef_a}\\
+d_i &= \frac{c_{i+1} - c_i}{3h_i}, \label{eq:coef_d}\\
+b_i &= \frac{y_{i+1} - y_i}{h_i} - \frac{h_i(2c_i + c_{i+1})}{3}.
+\label{eq:coef_b}
+\end{align}
+
+\subsection{Condiciones de continuidad y sistema tridiagonal}
+
+Las condiciones de continuidad de $S'$ y $S''$ en cada nodo interior $x_i$ ($i = 1, \ldots, n-1$) generan el sistema tridiagonal
+
+\begin{equation}
+h_{i-1}c_{i-1} + 2(h_{i-1}+h_i)c_i + h_i c_{i+1}
+= 3\!\left(\frac{y_{i+1}-y_i}{h_i} -
+           \frac{y_i - y_{i-1}}{h_{i-1}}\right),
+\label{eq:tridiagonal}
+\end{equation}
+
+\noindent que puede expresarse matricialmente como $\mathbf{A}\mathbf{c} = \mathbf{b}$, donde $\mathbf{A}$ es una matriz tridiagonal simétrica definida
+positiva. Esta estructura garantiza que el sistema tiene solución única y puede resolverse eficientemente mediante el algoritmo de Thomas en tiempo
+$\mathcal{O}(n)$.
 
 \subsection{Selección de condiciones de borde}
 
+El sistema~\eqref{eq:tridiagonal} tiene $n-1$ ecuaciones y $n+1$ incógnitas $c_0, c_1, \ldots, c_n$, por lo que se requieren dos condiciones de borde
+adicionales. Las más utilizadas son:
+
+\begin{itemize}
+    \item \textit{Spline} natural: $S''(x_0) = S''(x_n) = 0$, es decir, $c_0 = c_n = 0$. Esta condición minimiza la curvatura total de la curva y es la
+      más adecuada cuando no se dispone de información sobre las derivadas en los extremos.
+
+    \item \textit{Spline} sujeto (\textit{clamped}): $S'(x_0) = f'(x_0)$ y $S'(x_n) = f'(x_n)$, útil cuando se conocen las pendientes en los extremos.
+
+    \item \textit{Not-a-knot}: $S_0''' = S_1'''$ y $S_{n-2}''' = S_{n-1}'''$, opción predeterminada en \texttt{scipy} que suele ofrecer mejor
+      comportamiento global.
+\end{itemize}
+
+Para el caso de AutoMove City se adopta la condición \textit{natural} ($c_0 = c_n = 0$), dado que no se dispone de información sobre la tasa de cambio de
+demanda en el inicio y el fin del día. Esta elección es conservadora y evita extrapolaciones artificiales en los extremos del intervalo $[0\text{h},\,
+21\text{h}]$.
+
+\subsection{Ventaja sobre la interpolación de Lagrange}
+
+El polinomio interpolador de Lagrange de grado $n$ para $n+1$ nodos está definido globalmente como
+
+\begin{equation}
+P(x) = \sum_{i=0}^{n} y_i \prod_{\substack{j=0\\j\neq i}}^{n}
+\frac{x - x_j}{x_i - x_j}.
+\label{eq:lagrange}
+\end{equation}
+
+Si bien $P(x)$ pasa exactamente por todos los nodos, presenta inconvenientes significativos para el caso de estudio:
+
+\begin{enumerate}
+    \item \textbf{Fenómeno de Runge.} Con nodos equiespaciados o casi equiespaciados, el error de interpolación $|f(x) - P(x)|$ puede crecer sin límite
+      hacia los extremos del intervalo, generando oscilaciones espurias en la curva de demanda estimada.
+
+    \item \textbf{Sensibilidad global.} Una perturbación en cualquiera de los nodos modifica la curva en todo el dominio, lo que compromete la estabilidad
+      ante errores de medición.
+
+    \item \textbf{Grado elevado.} Con $n = 9$, el polinomio resultante es de grado 9, lo que incrementa la probabilidad de comportamiento oscilatorio
+      entre nodos.
+\end{enumerate}
+
+Los \textit{splines} cúbicos evitan estos problemas por construcción: al usar polinomios de grado 3 por tramos, el grado efectivo se mantiene bajo
+independientemente del número de nodos; una perturbación local afecta únicamente los tramos adyacentes; y la condición $S \in \mathcal{C}^2$ garantiza una
+curva visualmente suave. En el contexto de AutoMove City, esto se traduce en estimaciones de demanda sin picos artificiales que podrían provocar
+reasignaciones innecesarias de la flota
 
 % ============================================================
-%  IV. IMPLEMENTACION
+%  IV. IMPLEMENTACIÓN
 % ============================================================
 \section{Implementación}
 
 \subsection{Diseño}
 
-\subsection{Tecnologias utilizadas}
+La solución se estructura como una aplicación web de tres capas siguiendo el patrón \textit{Model-View-Controller} (MVC) ligero propio del ecosistema
+Flask:
 
-\subsection{Documentacion del codigo}
+\begin{itemize}
+    \item \textbf{Capa de datos y cómputo (\texttt{spline.py}):} Contiene los datos originales, realiza toda la interpolación y expone funciones puras sin
+      dependencia del framework web.
 
-\subsection{Despliegue y configuracion de la solucion}
+    \item \textbf{Capa de control (\texttt{main.py}):} Orquesta las rutas HTTP, la autenticación por sesión y precalcula los conjuntos de datos al
+      arranque del servidor para evitar recomputaciones en cada solicitud.
 
+    \item \textbf{Capa de presentación (\texttt{templates/}):} Plantillas Jinja2 que renderizan la \textit{landing page}, el formulario de acceso y el
+      panel de control interactivo, con gráficos construidos en el navegador mediante Chart.js~4.4.
+\end{itemize}
+
+El flujo general del sistema se resume en cuatro pasos: (1)~al iniciar el servidor, \texttt{spline.py} construye el spline cúbico y el interpolador de
+Lagrange sobre los 11 nodos de control; (2)~los 1\,441 valores resultantes quedan almacenados en memoria; (3)~las rutas de la API sirven esos datos en
+formato JSON al \textit{dashboard}; y (4)~Chart.js renderiza las curvas y el consultor puntual consume el \textit{endpoint}
+\texttt{/api/consulta?minuto=N} de forma asíncrona.
+
+\subsection{Tecnologías utilizadas}
+
+La Tabla~\ref{tab:tecnologias} lista las tecnologías empleadas en el prototipo.
+
+\begin{table}[h] \caption{Pila tecnológica del prototipo} \label{tab:tecnologias} \centering \begin{tabular}{lll}
+\toprule
+\textbf{Componente} & \textbf{Tecnología} & \textbf{Versión} \\
+\midrule
+Servidor web       & Flask          & 3.x     \\
+Cómputo numérico   & NumPy          & 1.26    \\
+Interpolación      & SciPy          & 1.13    \\
+Visualización      & Chart.js       & 4.4.0   \\
+Animación offline  & Matplotlib     & 3.9     \\
+Plantillas         & Jinja2         & 3.x     \\
+Lenguaje           & Python         & 3.11    \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La elección de \texttt{scipy.interpolate.CubicSpline} responde a que implementa el sistema tridiagonal de la ecuación~\eqref{eq:tridiagonal} con condición
+\textit{not-a-knot} por defecto, garantizando continuidad $\mathcal{C}^3$ en los nodos extremos. El interpolador de Lagrange se implementa con
+\texttt{scipy.interpolate.BarycentricInterpolator}, que emplea la forma baricéntrica de la ecuación~\eqref{eq:lagrange} para evitar la cancelación
+numérica de la formulación directa.
+
+\subsection{Documentación del código}
+
+A continuación se presentan los fragmentos centrales del módulo \texttt{spline.py}, comentados para claridad académica.
+
+\subsubsection{Datos de entrada y conversión de unidades}
+
+Los datos originales se definen como una lista de 11 pares $(hora_{\text{decimal}},\, demanda)$ que cubre el intervalo $[0\text{h}, 24\text{h}]$. Dado que
+el sistema de despacho opera en resolución de minutos, las horas se convierten multiplicando por 60, obteniendo el vector de nodos $\mathbf{x} \in
+\mathbb{R}^{11}$ con valores en $[0, 1440]$. Los vectores resultantes $\mathbf{x}$ (minutos) y $\mathbf{y}$ (solicitudes por minuto) son los insumos
+directos del interpolador. La conversión al dominio de minutos es necesaria para que la evaluación posterior entregue directamente la demanda en cada
+minuto del día ($x \in \{0, 1, \ldots, 1440\}$), sin reescalar.
+
+\subsubsection{Construcción del spline y evaluación}
+
+Con los vectores de nodos construidos, se instancia \texttt{CubicSpline} de \texttt{scipy.interpolate}, que resuelve internamente el sistema tridiagonal
+de la ecuación~\eqref{eq:tridiagonal} bajo la condición \textit{not-a-knot}. De forma paralela se instancia \texttt{BarycentricInterpolator} para el
+polinomio de Lagrange. Ambos modelos se evalúan sobre la malla entera $\mathbf{x}^* = \{0, 1, 2, \ldots, 1440\}$, produciendo 1\,441 valores de demanda
+estimada. Los valores resultantes se recortan en cero mediante \texttt{np.clip} para preservar la interpretabilidad física del resultado. El recorte
+(\texttt{np.clip}) elimina valores negativos que pueden aparecer en los extremos del spline como artefactos de la condición de borde; físicamente, una
+demanda negativa carece de sentido.
+
+\subsubsection{Validación cruzada LOOCV}
+
+Para cuantificar la generalización de ambos modelos se implementa
+\textit{Leave-One-Out Cross-Validation} (LOOCV) sobre los 11 nodos
+de control. En cada iteración se excluye el punto $i$-ésimo,
+se reajustan ambos modelos sobre los 10 nodos restantes y se
+calcula el error de predicción en el nodo omitido:
+
+En cada una de las 11 iteraciones se construye una máscara booleana que excluye el nodo $i$-ésimo, se reajustan \texttt{CubicSpline} y
+\texttt{BarycentricInterpolator} sobre los 10 nodos restantes, y se evalúa cada modelo en $x_i$ para obtener la predicción $\hat{y}_i$. Los errores
+firmados $\hat{y}_i - y_i$ se acumulan en una lista; los valores negativos de predicción se recortan a cero antes del cómputo del error para evitar
+penalizaciones artificiales por artefactos de borde. Con los errores acumulados se calculan las métricas globales según las ecuaciones~\eqref{eq:rmse}
+y~\eqref{eq:mae}:
+
+\begin{equation}
+\mathrm{MAE} = \frac{1}{n}\sum_{i=1}^{n} |y_i - \hat{y}_i|,
+\label{eq:mae}
+\end{equation}
+
+\noindent donde $\hat{y}_i$ denota el valor predicho por el modelo
+al omitir el nodo $i$.
+
+\subsubsection{Tiempo de espera estimado}
+
+A partir de la demanda interpolada se calcula el tiempo de espera promedio de un pasajero como:
+
+\begin{equation}
+T_{\text{espera}}(t) = \frac{S(t)}{N_{\text{taxis}}},
+\label{eq:t_espera}
+\end{equation}
+
+\noindent con $N_{\text{taxis}} = 200$ y $S(t)$ la demanda interpolada en el minuto $t$. Este indicador sirve como KPI principal del \textit{dashboard}.
+
+\subsection{Despliegue y configuración de la solución}
+
+El prototipo se ejecuta localmente con el servidor de desarrollo de Flask. Los pasos de instalación y arranque son:
+
+\begin{verbatim}
+# 1. instalar dependencias
+pip install -r requirements.txt
+
+# 2. iniciar el servidor (puerto 5000)
+python main.py
+\end{verbatim}
+
+Al arrancar, \texttt{main.py} precalcula las cuatro estructuras de datos principales —puntos de control, spline completo, curva de Lagrange y comparativa
+LOOCV— y las mantiene en memoria durante toda la sesión, garantizando tiempos de respuesta inferiores a 1\,ms en las consultas puntuales vía
+\texttt{/api/consulta}.
+
+La autenticación se gestiona mediante sesiones firmadas de Flask (\texttt{secret\_key}); en un entorno de producción se recomienda reemplazar el
+diccionario de credenciales en texto plano por una base de datos con contraseñas derivadas mediante bcrypt o Argon2. La estructura de rutas expuesta es la
+siguiente:
+
+\begin{table}[h]
+\caption{Rutas HTTP de la aplicación}
+\label{tab:rutas}
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Método} & \textbf{Ruta} & \textbf{Descripción} \\
+\midrule
+GET  & \texttt{/}              & Página de inicio con KPIs \\
+GET  & \texttt{/login}         & Formulario de acceso       \\
+POST & \texttt{/login}         & Autenticación de usuario   \\
+GET  & \texttt{/logout}        & Cierre de sesión           \\
+GET  & \texttt{/dashboard}     & Panel principal (protegido)\\
+GET  & \texttt{/api/spline}    & JSON con 1\,441 puntos     \\
+GET  & \texttt{/api/consulta}  & Consulta puntual por minuto\\
+\bottomrule
+\end{tabular}
+\end{table}
 
 % ============================================================
 %  V. RESULTADOS
@@ -151,3 +416,4 @@ Ciudad, País, Año, pp. 1--5.
 \end{thebibliography}
 
 \end{document}
+
