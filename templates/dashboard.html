@@ -15,7 +15,7 @@
     <div class="kpi-card fade-up">
       <p class="kpi-label">Demanda pico</p>
       <p class="kpi-value">{{ resumen.max_demanda.valor|int }}</p>
-      <p class="kpi-sub">rpm · {{ resumen.max_demanda.hora_str }}</p>
+      <p class="kpi-sub">solicitudes · {{ resumen.max_demanda.hora_str }}</p>
     </div>
     <div class="kpi-card fade-up">
       <p class="kpi-label">T. espera máx.</p>
@@ -25,7 +25,7 @@
     <div class="kpi-card fade-up">
       <p class="kpi-label">Demanda promedio</p>
       <p class="kpi-value">{{ resumen.demanda_promedio|int }}</p>
-      <p class="kpi-sub">rpm / minuto (día completo)</p>
+      <p class="kpi-sub">solicitudes / minuto (día completo)</p>
     </div>
     <div class="kpi-card fade-up">
       <p class="kpi-label">Taxis activos</p>
@@ -279,7 +279,7 @@ function baseScales(xLabel, yLabel) {
     data: {
       labels,
       datasets: [{
-        label: 'Demanda (rpm)',
+        label: 'Demanda (solicitudes)',
         data: valores,
         borderColor: C_AMBER,
         backgroundColor: C_FILL_A,
@@ -298,7 +298,7 @@ function baseScales(xLabel, yLabel) {
         legend: { labels: { font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: ctx => ` ${ctx.parsed.y.toFixed(1)} rpm`,
+            label: ctx => ` ${ctx.parsed.y.toFixed(1)} solicitudes`,
           }
         }
       },
@@ -345,11 +345,11 @@ function baseScales(xLabel, yLabel) {
         legend: { labels: { font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)} rpm`,
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)} solicitudes`,
           }
         }
       },
-      scales: baseScales('Punto omitido (hora)', 'Error absoluto (rpm)')
+      scales: baseScales('Punto omitido (hora)', 'Error absoluto (solicitudes)')
     }
   });
 })();
@@ -371,7 +371,7 @@ function baseScales(xLabel, yLabel) {
       labels,
       datasets: [
         {
-          label: 'Demanda interpolada (rpm)',
+          label: 'Demanda interpolada (solicitudes)',
           data: demanda,
           borderColor: C_BLUE,
           backgroundColor: C_FILL_B,
@@ -405,7 +405,7 @@ function baseScales(xLabel, yLabel) {
           callbacks: {
             label: ctx => {
               if (ctx.datasetIndex === 0)
-                return ` Demanda: ${ctx.parsed.y.toFixed(2)} rpm`;
+                return ` Demanda: ${ctx.parsed.y.toFixed(2)} solicitudes`;
               return ` T_espera: ${(ctx.parsed.y / 100).toFixed(4)} min`;
             }
           }
@@ -482,7 +482,7 @@ function baseScales(xLabel, yLabel) {
         legend: { labels: { font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y.toFixed(2) : '—'} rpm`,
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y.toFixed(2) : '—'} solicitudes`,
           }
         }
       },
@@ -508,7 +508,7 @@ async function consultarMinuto() {
     if (data.error) { alert(data.error); return; }
 
     document.getElementById('qHora').textContent    = data.hora_str;
-    document.getElementById('qDemanda').textContent = data.demanda.toFixed(2) + ' rpm';
+    document.getElementById('qDemanda').textContent = data.demanda.toFixed(2) + ' solicitudes';
     document.getElementById('qEspera').textContent  = data.t_espera.toFixed(6) + ' min';
     document.getElementById('queryResult').style.display = 'flex';
   } catch (e) {

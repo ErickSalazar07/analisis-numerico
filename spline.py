@@ -296,7 +296,7 @@ if __name__ == "__main__":
     print("=== Puntos de control ===")
     for p in get_puntos_control():
         print(f"  {p['hora_str'] if 'hora_str' in p else p['hora']:>5}h  "
-              f"→  minuto {p['minuto']:>4}  |  demanda {p['demanda']:>7.2f} rpm")
+              f"→  minuto {p['minuto']:>4}  |  demanda {p['demanda']:>7.2f} solicitudes")
 
     print("\n=== Resumen del día ===")
     print(json.dumps(get_resumen(), indent=2, ensure_ascii=False))
