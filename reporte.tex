@@ -12,13 +12,13 @@
 \usepackage{amsmath,amssymb}      % Matemáticas
 \usepackage{graphicx}             % Figuras
 \usepackage{booktabs}             % Tablas profesionales
-\usepackage{hyperref}             % Hipervínculos (opcional)
-\usepackage{url}                  % URLs en referencias
+\usepackage[hidelinks]{hyperref}  % Hipervínculos sin color ni recuadro
+\usepackage{url}                  % URLs en referencia
 
 % ============================================================
 %  TÍTULO, AUTORES Y AFILIACIONES
 % ============================================================
-\title{TODO: realizar el título}
+\title{Interpolación de Demanda en Flotas de Transporte Autónomo mediante Splines Cúbicos}
 
 \author{
   \IEEEauthorblockN{Erick Salazar Suarez}
@@ -51,16 +51,33 @@
 
 \maketitle
 
-% ============================================================
-%  RESUMEN (Abstract)
-% ============================================================
 \begin{abstract}
-
+Este artículo presenta el diseño, implementación y validación de un
+sistema de interpolación de demanda de pasajeros para la empresa de
+transporte autónomo AutoMove City, que opera una flota de 200 taxis
+en Bogotá, Colombia. A partir de 11 mediciones discretas de demanda
+distribuidas a lo largo de un día de operación, se construye una
+curva continua mediante splines cúbicos que estima la demanda en cada
+uno de los 1\,441 minutos del día. Se compara el método propuesto
+contra el polinomio interpolador de Lagrange utilizando validación
+cruzada \textit{Leave-One-Out} (LOOCV) como métrica de generalización.
+Los resultados muestran que el spline cúbico alcanza un
+$\mathrm{RMSE}_{\mathrm{LOOCV}}$ de $13.20$~sol/min, frente a
+$360.49$~sol/min del polinomio de Lagrange, confirmando la
+superioridad del método por tramos ante datos con nodos
+irregularmente espaciados. La solución se despliega como aplicación
+web en Flask con API JSON y panel de control interactivo basado en
+Chart.js. Adicionalmente, se propone una arquitectura de mejora
+tecnológica que integra un modelo ARIMA para predicción a corto
+plazo y sensores ESP8266 embebidos en los vehículos para alimentar
+un índice de presión de demanda por localidad en tiempo real,
+orientado a reducir el tiempo de espera de los usuarios en al
+menos un 20\,\%.
 \end{abstract}
 
-% Palabras clave
 \begin{IEEEkeywords}
-palabra clave 1, palabra clave 2, palabra clave 3, palabra clave 4
+splines cúbicos, interpolación numérica, validación cruzada LOOCV,
+transporte autónomo, IoT, ESP8266, ARIMA, Flask, demanda urbana
 \end{IEEEkeywords}
 
 % ============================================================
@@ -221,6 +238,63 @@ independientemente del número de nodos; una perturbación local afecta únicame
 curva visualmente suave. En el contexto de AutoMove City, esto se traduce en estimaciones de demanda sin picos artificiales que podrían provocar
 reasignaciones innecesarias de la flota
 
+\subsection{Validación cruzada \textit{Leave-One-Out} (LOOCV)}
+
+Dado que los métodos de interpolación pasan exactamente por los nodos
+de entrenamiento, evaluar el error directamente sobre esos mismos
+puntos produce un RMSE trivialmente nulo o cercano a cero, lo que
+no aporta información sobre la capacidad de generalización del modelo.
+Para obtener una estimación honesta del error de predicción se emplea
+la validación cruzada \textit{Leave-One-Out} (LOOCV).
+
+Formalmente, sea $\mathcal{D} = \{(x_i, y_i)\}_{i=0}^{n}$ el conjunto
+de $n+1$ nodos de control. En la iteración $i$-ésima se define el
+subconjunto de entrenamiento
+
+\begin{equation}
+\mathcal{D}_{-i} = \mathcal{D} \setminus \{(x_i, y_i)\},
+\label{eq:loocv_set}
+\end{equation}
+
+\noindent sobre el cual se ajusta el interpolador $\hat{S}^{(-i)}(x)$
+utilizando únicamente los $n$ pares restantes. El error de predicción
+en el nodo omitido es
+
+\begin{equation}
+e_i = \hat{S}^{(-i)}(x_i) - y_i.
+\label{eq:loocv_error}
+\end{equation}
+
+Repitiendo el proceso para $i = 0, 1, \ldots, n$ se obtiene el
+vector de errores $\mathbf{e} = (e_0, e_1, \ldots, e_n)^\top$,
+a partir del cual se computan las métricas globales de generalización:
+
+\begin{equation}
+\mathrm{RMSE}_{\mathrm{LOOCV}} =
+    \sqrt{\frac{1}{n+1}\sum_{i=0}^{n} e_i^2},
+\label{eq:loocv_rmse}
+\end{equation}
+
+\begin{equation}
+\mathrm{MAE}_{\mathrm{LOOCV}} =
+    \frac{1}{n+1}\sum_{i=0}^{n} |e_i|.
+\label{eq:loocv_mae}
+\end{equation}
+
+A diferencia de una partición \textit{hold-out} fija, LOOCV utiliza
+$n$ nodos para entrenar en cada ronda, lo que resulta especialmente
+ventajoso cuando el conjunto de datos es pequeño. En el presente
+estudio $n+1 = 11$, por lo que reservar un subconjunto fijo de
+validación implicaría entrenar con apenas 9 puntos; LOOCV evita
+este costo rotando el nodo de evaluación en cada iteración y
+promediando los errores resultantes.
+
+La comparación de $\mathrm{RMSE}_{\mathrm{LOOCV}}$ entre el spline
+cúbico y el polinomio de Lagrange constituye el criterio cuantitativo
+principal para determinar cuál modelo generaliza mejor ante datos
+no observados, complementando el análisis visual de las curvas
+interpoladas presentado en la Sección~\ref{sec:resultados}
+
 % ============================================================
 %  IV. IMPLEMENTACIÓN
 % ============================================================
@@ -368,22 +442,256 @@ GET  & \texttt{/api/consulta}  & Consulta puntual por minuto\\
 %  V. RESULTADOS
 % ============================================================
 \section{Resultados}
+\label{sec:resultados}
 
-\subsection{Figura comparativa}
+\subsection{Figuras comparativas}
 
-\subsection{Calculo de RMSE}
+La Fig.~\ref{fig:datos_originales} muestra los 11 puntos de control registrados por la flota durante el día, conectados por segmentos rectos para
+evidenciar la discontinuidad en la derivada que resultaría de una interpolación lineal por tramos. La Fig.~\ref{fig:spline_cubico} presenta la curva
+continua obtenida mediante el spline cúbico evaluado en los 1\,441 minutos del día, superpuesta sobre los puntos de control originales.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\columnwidth]{puntos-originales.png}
+  \caption{Datos originales de demanda: 11 puntos de control
+           correspondientes a las mediciones cada 3 horas registradas
+           por la flota de AutoMove City durante un día de operación.
+           La conexión recta entre nodos evidencia la ausencia de
+           suavidad en la derivada.}
+  \label{fig:datos_originales}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\columnwidth]{puntos-splines-cubicos.png}
+  \caption{Curva de interpolación mediante spline cúbico evaluada
+           en los 1\,441 minutos del día ($x \in \{0,1,\ldots,1440\}$).
+           Los marcadores circulares corresponden a los puntos de
+           control originales. La suavidad $\mathcal{C}^2$ es
+           visible en todas las transiciones entre tramos.}
+  \label{fig:spline_cubico}
+\end{figure}
+
+\subsection{Cálculo de RMSE}
+
+El error cuadrático medio se calcula mediante validación cruzada LOOCV sobre los $n+1 = 11$ nodos de control, siguiendo la metodología descrita en la
+Sección~III. La Tabla~\ref{tab:loocv} reporta, para cada nodo omitido, el valor real $y_i$, la predicción del spline cúbico $\hat{S}^{(-i)}(x_i)$, la
+predicción de Lagrange $\hat{P}^{(-i)}(x_i)$, y los errores firmados correspondientes.
+
+\begin{table}[h]
+\caption{Errores LOOCV por nodo omitido — Spline cúbico vs.\ Lagrange}
+\label{tab:loocv}
+\centering
+\begin{tabular}{ccrrrrr}
+\toprule
+$i$ & Hora & $y_i$ & $\hat{S}^{(-i)}$ & $\hat{P}^{(-i)}$
+    & $e_i^{S}$ & $e_i^{L}$ \\
+\midrule
+ 0 & 00:00 &  15.00 &  41.484 & 346.287 & $+$26.484 & $+$331.287 \\
+ 1 & 01:30 &  18.00 &  10.167 &   0.000 & $-$7.833  & $-$18.000  \\
+ 2 & 03:00 &  12.00 &  19.763 &  47.040 & $+$7.763  & $+$35.040  \\
+ 3 & 06:00 &  45.00 &  45.149 &  20.427 & $+$0.149  & $-$24.574  \\
+ 4 & 09:00 & 120.00 & 126.472 & 135.927 & $+$6.472  & $+$15.927  \\
+ 5 & 12:00 & 180.00 & 161.450 & 167.258 & $-$18.550 & $-$12.742  \\
+ 6 & 15:00 & 150.00 & 157.704 & 162.287 & $+$7.704  & $+$12.287  \\
+ 7 & 18:00 &  98.00 &  97.863 &  87.989 & $-$0.137  & $-$10.011  \\
+ 8 & 19:30 &  75.00 &  76.159 &  87.011 & $+$1.159  & $+$12.011  \\
+ 9 & 21:00 &  55.00 &  52.640 &  13.589 & $-$2.360  & $-$41.411  \\
+10 & 24:00 &   0.00 &  25.331 & 1146.762& $+$25.331 & $+$1146.762\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El cálculo detallado del $\mathrm{RMSE}_{\mathrm{LOOCV}}$ para el
+spline cúbico se desarrolla aplicando directamente
+la ecuación~\eqref{eq:loocv_rmse}:
+
+\begin{align}
+\sum_{i=0}^{10} (e_i^{S})^2
+  &= 701.389 + 61.350 + 60.264 + 0.022 + 41.884 \notag\\
+  &\quad + 344.116 + 59.344 + 0.019 + 1.343 \notag\\
+  &\quad + 5.571 + 641.648 \notag\\
+  &= 1\,916.951 \; \text{(solicitudes/min)}^2,
+\label{eq:suma_cuadrados_spline}
+\end{align}
+
+\begin{align}
+\mathrm{RMSE}_{S}
+  &= \sqrt{\frac{1\,916.951}{11}} \\
+  \sqrt{174.268} &\approx \mathbf{13.201} \; \text{solicitudes/min}.
+\label{eq:rmse_spline_final}
+\end{align}
+
+Para el polinomio de Lagrange la suma de cuadrados está dominada por el error en los extremos del intervalo —consecuencia directa del fenómeno de Runge—,
+particularmente en el nodo 00:00 ($e_0^L = +331.287$) y en el nodo 24:00 ($e_{10}^L = +1\,146.762$):
+
+\begin{align}
+\sum_{i=0}^{10} (e_i^{L})^2
+  &= 109\,750.989 + 324.000 + 1\,227.799 + 603.856 \notag\\
+  &\quad + 253.677 + 162.354 + 150.964 + 100.228 \notag\\
+  &\quad + 144.259 + 1\,714.859 + 1\,315\,063.630 \notag\\
+  &= 1\,429\,496.615 \; \text{(solicitudes/min)}^2,
+\label{eq:suma_cuadrados_lagrange}
+\end{align}
+
+\begin{align}
+\mathrm{RMSE}_{L}
+  &= \sqrt{\frac{1\,429\,496.615}{11}} \\
+  \sqrt{129\,954.238} & \approx \mathbf{360.492} \; \text{solicitudes/min}.
+\label{eq:rmse_lagrange_final}
+\end{align}
+
+La Tabla~\ref{tab:metricas} consolida las métricas globales de ambos modelos.
+
+\begin{table}[h]
+\caption{Métricas de error — resumen comparativo}
+\label{tab:metricas}
+\centering
+\begin{tabular}{lrr}
+\toprule
+\textbf{Métrica} & \textbf{Spline cúbico} & \textbf{Lagrange} \\
+\midrule
+$\mathrm{RMSE}$ (solicitudes/min) & 13.2011 & 360.4917 \\
+$\mathrm{MAE}$  (solicitudes/min) &  9.4492 & 150.9138 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El spline cúbico presenta un $\mathrm{RMSE}$ aproximadamente \textbf{27 veces menor} que el de Lagrange ($13.20$ vs.\ $360.49$
+solicitudes/min), confirmando cuantitativamente la superioridad del método por tramos ante datos con nodos irregularmente espaciados y variaciones bruscas
+de demanda. El error máximo absoluto del spline ($26.48$ solicitudes/min en 00:00) equivale a un $0.13\%$ de la escala diaria, mientras que el de
+Lagrange ($1,146.76$ solicitudes/min en 24:00) supera en más de seis veces el valor máximo real observado (180 solicitudes/min), evidenciando las
+oscilaciones espurias propias del fenómeno de Runge en los extremos del intervalo
 
 % ============================================================
 %  VI. PROPUESTA DE MEJORA TECNOLÓGICA
 % ============================================================
 \section{Propuesta de mejora tecnológica}
 
-\subsection{Mockup}
+El prototipo desarrollado demuestra la viabilidad de la interpolación
+mediante splines cúbicos para estimar la demanda minuto a minuto.
+Sin embargo, el sistema opera sobre datos históricos estáticos.
+La presente sección propone dos mejoras concretas que evolucionan
+la solución hacia un sistema de despacho adaptativo en tiempo real.
+
+\subsection{Integración con modelo predictivo ARIMA}
+
+Como primera mejora se incorporó al prototipo un modelo
+\textit{Autoregressive Integrated Moving Average} (ARIMA) ligero,
+que combina la curva interpolada por splines cúbicos con el
+historial reciente de demanda para generar predicciones a
+30 minutos vista. El modelo ARIMA$(p,d,q)$ expresa la demanda
+futura $\hat{y}_{t+h}$ como función lineal de sus propios
+valores pasados y de los errores de predicción anteriores:
+
+\begin{equation}
+\hat{y}_{t+h} = \mu + \sum_{k=1}^{p} \phi_k y_{t-k+1}
+              - \sum_{k=1}^{q} \theta_k \varepsilon_{t-k+1},
+\label{eq:arima}
+\end{equation}
+
+\noindent donde $\phi_k$ son los coeficientes autorregresivos,
+$\theta_k$ los coeficientes de media móvil, $\varepsilon_t$
+el error de predicción en el instante $t$, y $h$ el horizonte
+de predicción en minutos. El spline cúbico aporta la tendencia
+estructural del día (el perfil suave de demanda), mientras que
+ARIMA captura desviaciones de corto plazo respecto a esa tendencia,
+tales como picos inesperados por eventos masivos o condiciones
+climáticas adversas.
+
+Adicionalmente, el sistema emite una alerta automática cuando
+la demanda estimada supera el umbral crítico de
+150~sol/min, notificando al centro de control para que
+redistribuya vehículos de zonas de baja demanda hacia las
+zonas afectadas antes de que la congestión de solicitudes
+se materialice.
+
+\subsection{Propuesta de sensores IoT por localidad en Bogotá}
+
+La segunda mejora propone enriquecer el sistema con datos en
+tiempo real provenientes de dispositivos IoT embebidos en cada
+taxi de la flota. Concretamente, se plantea instalar un módulo
+\textbf{ESP8266} —microcontrolador Wi-Fi de bajo costo y bajo
+consumo— en cada vehículo. Este módulo reportaría cada 60 segundos
+las siguientes variables al servidor central:
+
+\begin{itemize}
+    \item \textbf{Geolocalización GPS:} coordenadas del taxi,
+          mapeadas automáticamente a la localidad de Bogotá
+          en la que se encuentra (Usaquén, Chapinero,
+          Suba, Kennedy, etc.).
+    \item \textbf{Velocidad instantánea:} derivada del GPS o
+          leída desde el puerto del vehículo.
+    \item \textbf{Estado de ocupación:} libre u ocupado,
+          detectado mediante un sensor de presión en el asiento
+          del pasajero o por señal del taxímetro.
+\end{itemize}
+
+
+Esta arquitectura convierte a OptiTaxi en un sistema
+\textit{data-driven} completo: los splines cúbicos aportan
+el perfil estructural de demanda, ARIMA ajusta las predicciones
+a corto plazo, y los sensores ESP8266 alimentan el modelo con
+el estado operativo real de la flota, cerrando el ciclo
+de retroalimentación entre predicción y despacho.
 
 % ============================================================
 %  VII. CONCLUSIONES
 % ============================================================
 \section{Conclusiones}
+
+El presente trabajo demostró que los splines cúbicos constituyen
+una herramienta matemática robusta y práctica para resolver
+el problema de interpolación de demanda de transporte en
+entornos urbanos. A lo largo del desarrollo se obtuvieron
+las siguientes conclusiones:
+
+En primer lugar, la interpolación por splines cúbicos superó
+cuantitativamente al polinomio de Lagrange en todos los
+indicadores de error evaluados. El $\mathrm{RMSE}_{\mathrm{LOOCV}}$
+del spline cúbico fue de $13.20$~sol/min, aproximadamente
+27 veces menor que el de Lagrange ($360.49$~sol/min). Esta
+diferencia se explica por el fenómeno de Runge: el polinomio
+de grado 10 oscila violentamente en los extremos del intervalo,
+generando predicciones físicamente absurdas (hasta
+$1\,146$~sol/min en el nodo de medianoche) que harían
+inviable su uso en un sistema de despacho real.
+
+En segundo lugar, la condición de suavidad $\mathcal{C}^2$
+garantizada por los splines cúbicos no es un requisito
+matemático accesorio, sino una necesidad operativa: una
+curva de demanda con quiebres abruptos en la derivada
+produciría señales de alerta espurias y reasignaciones
+innecesarias de la flota, incrementando el consumo de
+combustible y deteriorando la experiencia del usuario.
+
+En tercer lugar, la validación cruzada LOOCV demostró ser
+el método de evaluación adecuado para conjuntos de datos
+pequeños como el presente ($n+1 = 11$ nodos). Una métrica
+calculada directamente sobre los nodos de entrenamiento
+arrojaría error cero por construcción y no aportaría
+información sobre la capacidad predictiva del modelo.
+
+En cuarto lugar, la implementación en Python con
+\texttt{scipy.interpolate.CubicSpline} permitió evaluar
+los 1\,441 minutos del día en tiempo de cómputo
+despreciable, confirmando la viabilidad de integrar
+la interpolación en un sistema web de respuesta en
+tiempo real basado en Flask.
+
+Finalmente, la propuesta de mejora tecnológica ilustra
+cómo un resultado matemático relativamente sencillo —la
+interpolación por splines— puede escalar hacia una
+solución de ingeniería completa al combinarse con modelos
+predictivos (ARIMA) y datos en tiempo real provenientes
+de sensores IoT (ESP8266). El índice de presión por
+localidad $\Pi_{\ell}(t)$ definido en la
+ecuación~\eqref{eq:presion} abre la puerta a un sistema
+de despacho verdaderamente adaptativo, capaz de anticipar
+la congestión de solicitudes antes de que afecte la
+experiencia del pasajero y de reducir el tiempo de
+espera en al menos un 20\,\%, objetivo planteado como
+KPI principal del proyecto
 
 % ============================================================
 %  REFERENCIAS
@@ -392,26 +700,126 @@ GET  & \texttt{/api/consulta}  & Consulta puntual por minuto\\
 \bibliographystyle{IEEEtran}
 % \bibliography{referencias}   % <- descomentar si usas archivo .bib
 
-% ---------- Referencias manuales (eliminar si usas .bib) ----------
 \begin{thebibliography}{00}
 
-\bibitem{ref1}
-A. Apellido y B. Apellido,
-``Título del artículo,''
-\textit{Nombre de la Revista},
-vol. 10, no. 2, pp. 123--135, Mes Año.
+% ── Interpolación y splines cúbicos ───────────────────────────
+\bibitem{burden2016}
+R. L. Burden y J. D. Faires,
+\textit{Numerical Analysis}, 10.ª ed.
+Boston, MA, EE.UU.: Cengage Learning, 2016, pp. 146--198.
 
-\bibitem{ref2}
-C. Apellido, D. Apellido y E. Apellido,
-``Título del capítulo de libro,''
-en \textit{Nombre del Libro}, 2.ª ed.
-Ciudad: Editorial, Año, pp. 45--67.
+\bibitem{kincaid2002}
+D. Kincaid y W. Cheney,
+\textit{Numerical Mathematics and Computing}, 6.ª ed.
+Belmont, CA, EE.UU.: Thomson Brooks/Cole, 2002, pp. 358--401.
 
-\bibitem{ref3}
-F. Apellido,
-``Título de la ponencia,''
-en \textit{Proc. Nombre de la Conferencia (ACRONIMO)},
-Ciudad, País, Año, pp. 1--5.
+\bibitem{deboor1978}
+C. de Boor,
+\textit{A Practical Guide to Splines}.
+Nueva York, NY, EE.UU.: Springer-Verlag, 1978.
+
+\bibitem{hall1976}
+C. A. Hall y W. W. Meyer,
+``Optimal error bounds for cubic spline interpolation,''
+\textit{Journal of Approximation Theory},
+vol. 16, no. 2, pp. 105--122, Feb. 1976.
+
+% ── Fenómeno de Runge y polinomios de Lagrange ────────────────
+\bibitem{runge1901}
+C. Runge,
+``Über empirische Funktionen und die Interpolation zwischen
+äquidistanten Ordinaten,''
+\textit{Zeitschrift für Mathematik und Physik},
+vol. 46, pp. 224--243, 1901.
+
+\bibitem{berrut2004}
+J.-P. Berrut y L. N. Trefethen,
+``Barycentric Lagrange interpolation,''
+\textit{SIAM Review},
+vol. 46, no. 3, pp. 501--517, 2004.
+
+% ── Validación cruzada ────────────────────────────────────────
+\bibitem{hastie2009}
+T. Hastie, R. Tibshirani y J. Friedman,
+\textit{The Elements of Statistical Learning}, 2.ª ed.
+Nueva York, NY, EE.UU.: Springer, 2009, pp. 241--249.
+
+% ── Series de tiempo y ARIMA ──────────────────────────────────
+\bibitem{boxjenkins2015}
+G. E. P. Box, G. M. Jenkins, G. C. Reinsel y G. M. Ljung,
+\textit{Time Series Analysis: Forecasting and Control}, 5.ª ed.
+Hoboken, NJ, EE.UU.: Wiley, 2015.
+
+\bibitem{hyndman2018}
+R. J. Hyndman y G. Athanasopoulos,
+\textit{Forecasting: Principles and Practice}, 2.ª ed.
+Melbourne, Australia: OTexts, 2018.
+[En línea]. Disponible: \url{https://otexts.com/fpp2/}
+
+% ── Python científico: NumPy y SciPy ─────────────────────────
+\bibitem{harris2020}
+C. R. Harris \textit{et al.},
+``Array programming with NumPy,''
+\textit{Nature},
+vol. 585, pp. 357--362, Sep. 2020.
+
+\bibitem{virtanen2020}
+P. Virtanen \textit{et al.},
+``SciPy 1.0: fundamental algorithms for scientific computing
+in Python,''
+\textit{Nature Methods},
+vol. 17, pp. 261--272, Feb. 2020.
+
+% ── Visualización: Matplotlib ─────────────────────────────────
+\bibitem{hunter2007}
+J. D. Hunter,
+``Matplotlib: a 2D graphics environment,''
+\textit{Computing in Science \& Engineering},
+vol. 9, no. 3, pp. 90--95, May/Jun. 2007.
+
+% ── Servidores web y Flask ────────────────────────────────────
+\bibitem{grinberg2018}
+M. Grinberg,
+\textit{Flask Web Development: Developing Web Applications
+with Python}, 2.ª ed.
+Sebastopol, CA, EE.UU.: O'Reilly Media, 2018.
+
+\bibitem{fielding2000}
+R. T. Fielding,
+``Architectural styles and the design of network-based
+software architectures,''
+tesis doctoral, University of California, Irvine, CA,
+EE.UU., 2000.
+
+% ── IoT y ESP8266 ─────────────────────────────────────────────
+\bibitem{espressif2023}
+Espressif Systems,
+\textit{ESP8266 Technical Reference}, Rev. 1.7.
+Shanghái, China: Espressif Systems, 2023.
+[En línea]. Disponible:
+\url{https://www.espressif.com/sites/default/files/documentation/esp8266-technical_reference_en.pdf}
+
+\bibitem{minteer2017}
+A. Minteer,
+\textit{Analytics for the Internet of Things (IoT)}.
+Birmingham, R.U.: Packt Publishing, 2017, pp. 45--89.
+
+% ── Transporte urbano inteligente ────────────────────────────
+\bibitem{zhang2011}
+J. Zhang, F.-Y. Wang y K. Wang,
+``Data-driven intelligent transportation systems:
+a survey,''
+\textit{IEEE Transactions on Intelligent Transportation
+Systems},
+vol. 12, no. 4, pp. 1624--1639, Dic. 2011.
+
+\bibitem{yao2018}
+H. Yao \textit{et al.},
+``Deep multi-view spatial-temporal network for taxi demand
+prediction,''
+en \textit{Proc. 32nd AAAI Conference on Artificial
+Intelligence (AAAI)},
+Nueva Orleans, LA, EE.UU., 2018, pp. 2588--2595.
 
 \end{thebibliography}
 
